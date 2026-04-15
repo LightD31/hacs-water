@@ -1,0 +1,24 @@
+# Coller dans la section "Eau chaude" de votre dashboard,
+# en remplacement (ou en plus) de la grosse carte bubble-card "Automatisation"
+# et de la rangée de chips de diagnostic.
+#
+# Cette carte unique remplace visuellement environ 3 cartes du dashboard v4 :
+# - la bubble-card "Automatisation" avec ses sub-buttons stylés
+# - les chips de diagnostic
+# - la mushroom-template-card "raison de la décision"
+
+- type: custom:cumulus-solaire-card
+  entity: sensor.cumulus_automation
+  forecast_entity: sensor.solcast_pv_forecast_previsions_pour_aujourd_hui
+
+# Optionnel : vous pouvez la mettre aussi dans le header (à la place
+# du conditional cumulus_automation actuel) si vous voulez l'avoir
+# en permanence visible :
+#
+# header:
+#   card:
+#     type: vertical-stack
+#     cards:
+#       - ...
+#       - type: custom:cumulus-solaire-card
+#         entity: sensor.cumulus_automation
