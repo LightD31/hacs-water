@@ -66,8 +66,47 @@ forecast_entity: sensor.solcast_pv_forecast_previsions_pour_aujourd_hui
 |---|---|---|---|
 | `entity` | string | **requis** | L'entité produite par le flow Node-RED v4 |
 | `forecast_entity` | string | `sensor.solcast_pv_forecast_previsions_pour_aujourd_hui` | Capteur Solcast pour la courbe du jour. Doit exposer `detailedForecast` en attribut. |
+| `show_settings` | string/bool | `'collapsible'` | `'collapsible'` (défaut, repliable, fermé au départ) · `'expanded'` (toujours ouvert) · `false` (masqué) |
+| `controls` | object | (voir ci-dessous) | Mapping des helpers HA contrôlés par les sliders et le toggle |
 
 Le champ Solcast affiché (`pv_estimate`, `pv_estimate10`, `pv_estimate90`) suit l'attribut `forecast_field` exposé par le sensor cumulus, donc le sélecteur Solcast reste maître.
+
+### Panneau réglages
+
+Le panneau "Réglages" (icône ⚙ en bas de la carte, repliable) expose six contrôles, chacun pilotant un helper HA :
+
+| Clé `controls` | Type | Helper par défaut | Notes |
+|---|---|---|---|
+| `enabled` | toggle | `input_boolean.cumulus_automation_enabled` | Active/désactive l'automatisation entière |
+| `target` | slider | `input_number.cumulus_target_temp` | Cible normale (°C) |
+| `min` | slider | `input_number.cumulus_min_temp` | Seuil bas, déclenche le forçage (°C) |
+| `solar_trigger` | slider | `input_number.cumulus_solar_trigger` | Seuil de production solaire (W). Affiche la valeur effective si modulée par `tomorrow_mode`. |
+| `surplus_trigger` | slider | `input_number.cumulus_surplus_trigger` | Seuil anti-injection (W) |
+| `efficiency` | slider | `input_number.cumulus_efficiency` | Rendement du chauffage (0–1 ou 0–100 %) |
+
+Les sliders lisent automatiquement `min`, `max`, `step`, `unit_of_measurement` depuis l'helper HA — pas besoin de les redéfinir dans la carte. Les changements sont envoyés à HA après 250 ms de pause (debounce), pour éviter de spammer le bus pendant qu'on déplace le curseur.
+
+Pour pointer un slider sur un helper différent :
+
+```yaml
+type: custom:cumulus-solaire-card
+entity: sensor.cumulus_automation
+controls:
+  target: input_number.mon_autre_helper
+  efficiency: false   # masque cette ligne
+```
+
+Pour masquer entièrement le panneau :
+
+```yaml
+show_settings: false
+```
+
+Pour qu'il soit toujours déplié (carte plus grande mais tout visible) :
+
+```yaml
+show_settings: expanded
+```
 
 ## Comportement des couleurs
 

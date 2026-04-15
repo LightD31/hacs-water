@@ -4,20 +4,17 @@
  * Custom Lovelace card pour le sensor.cumulus_automation produit par
  * le flow Node-RED v4 du cumulus solaire.
  *
- * Affiche en un coup d'œil :
- *   - L'état courant (anti-injection, legionella, forçage, etc.) avec
- *     priorité visuelle et animation
- *   - Un cadran 270° de la température de l'eau avec repères pour min,
- *     forçage, cible et seuil legionella
- *   - La courbe de production solaire prévue (Solcast) du jour, avec
- *     la fenêtre optimale surlignée et le curseur "maintenant"
- *   - Une rangée de pastilles : production, surplus, jours sans 60°C,
- *     fraîcheur Solcast
+ * Sections :
+ *   1. Hero (état + raison + heure)
+ *   2. Cadran 270° température eau
+ *   3. Courbe Solcast du jour avec fenêtre optimale + curseur "now"
+ *   4. Pastilles : production / surplus / legionella / Solcast
+ *   5. Réglages (sliders + toggle, repliable)
  *
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -26,32 +23,58 @@ console.info(
 );
 
 const MODES = {
-  'disabled':            { color: '#9e9e9e', icon: 'mdi:robot-off',                title: 'Automatisation désactivée',  active: false },
-  'legionella-critical': { color: '#e53935', icon: 'mdi:bacteria',                 title: 'Cycle anti-Legionella',      active: true  },
-  'anti-injection':      { color: '#43a047', icon: 'mdi:transmission-tower-export',title: 'Charge le surplus solaire',  active: true  },
-  'legionella-due':      { color: '#fb8c00', icon: 'mdi:bacteria-outline',         title: 'Legionella à programmer',    active: false },
-  'solcast-stale':       { color: '#757575', icon: 'mdi:cloud-off-outline',        title: 'Solcast périmé',             active: false },
-  'forcing':             { color: '#fb8c00', icon: 'mdi:flash',                    title: 'Forçage dans la fenêtre',    active: true  },
-  'heating':             { color: '#43a047', icon: 'mdi:water-boiler',             title: 'Chauffe avec le solaire',    active: true  },
-  'target-reached':      { color: '#1e88e5', icon: 'mdi:check-circle-outline',     title: 'Cible atteinte',             active: false },
-  'idle':                { color: '#1e88e5', icon: 'mdi:water-boiler-auto',        title: 'En attente',                 active: false },
+  'disabled':            { color: '#9e9e9e', icon: 'mdi:robot-off',                 title: 'Automatisation désactivée', active: false },
+  'legionella-critical': { color: '#e53935', icon: 'mdi:bacteria',                  title: 'Cycle anti-Legionella',     active: true  },
+  'anti-injection':      { color: '#43a047', icon: 'mdi:transmission-tower-export', title: 'Charge le surplus solaire', active: true  },
+  'legionella-due':      { color: '#fb8c00', icon: 'mdi:bacteria-outline',          title: 'Legionella à programmer',   active: false },
+  'solcast-stale':       { color: '#757575', icon: 'mdi:cloud-off-outline',         title: 'Solcast périmé',            active: false },
+  'forcing':             { color: '#fb8c00', icon: 'mdi:flash',                     title: 'Forçage dans la fenêtre',   active: true  },
+  'heating':             { color: '#43a047', icon: 'mdi:water-boiler',              title: 'Chauffe avec le solaire',   active: true  },
+  'target-reached':      { color: '#1e88e5', icon: 'mdi:check-circle-outline',      title: 'Cible atteinte',            active: false },
+  'idle':                { color: '#1e88e5', icon: 'mdi:water-boiler-auto',         title: 'En attente',                active: false },
 };
+
+const DEFAULT_CONTROLS = {
+  enabled:         { entity: 'input_boolean.cumulus_automation_enabled', label: 'Automatisation',     type: 'toggle' },
+  target:          { entity: 'input_number.cumulus_target_temp',         label: 'Cible',              type: 'slider', icon: 'mdi:thermometer-check' },
+  min:             { entity: 'input_number.cumulus_min_temp',            label: 'Minimum',            type: 'slider', icon: 'mdi:thermometer-low' },
+  solar_trigger:   { entity: 'input_number.cumulus_solar_trigger',       label: 'Seuil solaire',      type: 'slider', icon: 'mdi:solar-power',
+                     subtitleAttr: 'effective_trigger', subtitleLabel: 'effectif', subtitleUnit: 'W' },
+  surplus_trigger: { entity: 'input_number.cumulus_surplus_trigger',     label: 'Seuil anti-injection', type: 'slider', icon: 'mdi:transmission-tower-export' },
+  efficiency:      { entity: 'input_number.cumulus_efficiency',          label: 'Rendement',          type: 'slider', icon: 'mdi:percent-circle' },
+};
+
+const CONTROL_ORDER = ['enabled', 'target', 'min', 'solar_trigger', 'surplus_trigger', 'efficiency'];
 
 class CumulusSolaireCard extends HTMLElement {
   static getStubConfig() {
-    return {
-      entity: 'sensor.cumulus_automation',
-      forecast_entity: 'sensor.solcast_pv_forecast_previsions_pour_aujourd_hui',
-    };
+    return { entity: 'sensor.cumulus_automation' };
   }
 
   setConfig(config) {
     if (!config || !config.entity) {
       throw new Error("L'entité sensor.cumulus_automation est requise");
     }
+    // Merge controls
+    const userControls = config.controls || {};
+    const controls = {};
+    for (const key of CONTROL_ORDER) {
+      const def = DEFAULT_CONTROLS[key];
+      const u = userControls[key];
+      if (u === false || u === null) continue;
+      if (typeof u === 'string') {
+        controls[key] = { ...def, entity: u };
+      } else if (u && typeof u === 'object') {
+        controls[key] = { ...def, ...u };
+      } else {
+        controls[key] = { ...def };
+      }
+    }
     this._config = {
       forecast_entity: 'sensor.solcast_pv_forecast_previsions_pour_aujourd_hui',
+      show_settings: 'collapsible',  // 'collapsible' | 'expanded' | false
       ...config,
+      controls,
     };
     this._built = false;
   }
@@ -61,7 +84,6 @@ class CumulusSolaireCard extends HTMLElement {
     if (!this._built) this._build();
     this._render();
     if (!this._tick) {
-      // Re-render every 30s to keep clock + "now" cursor accurate
       this._tick = setInterval(() => this._render(), 30000);
     }
   }
@@ -73,7 +95,9 @@ class CumulusSolaireCard extends HTMLElement {
     }
   }
 
-  getCardSize() { return 6; }
+  getCardSize() {
+    return this._config.show_settings === 'expanded' ? 9 : 6;
+  }
 
   // ---------- Build ----------
 
@@ -136,10 +160,20 @@ class CumulusSolaireCard extends HTMLElement {
         </div>
 
         <div class="chips" id="chips"></div>
+
+        <div class="settings" id="settings">
+          <div class="settings-toggle" id="settingsToggle">
+            <span class="settings-toggle-label">
+              <ha-icon icon="mdi:tune-variant"></ha-icon>
+              <span>Réglages</span>
+            </span>
+            <ha-icon class="chevron" id="chevron" icon="mdi:chevron-down"></ha-icon>
+          </div>
+          <div class="settings-content" id="settingsContent"></div>
+        </div>
       </ha-card>
     `;
 
-    // Caches
     this._el = {
       card:         this.shadowRoot.querySelector('ha-card'),
       accent:       this.shadowRoot.querySelector('#accent'),
@@ -162,17 +196,116 @@ class CumulusSolaireCard extends HTMLElement {
       forecastMeta:   this.shadowRoot.querySelector('#forecastMeta'),
       forecastStale:  this.shadowRoot.querySelector('#forecastStale'),
       chips:        this.shadowRoot.querySelector('#chips'),
+      settings:     this.shadowRoot.querySelector('#settings'),
+      settingsToggle: this.shadowRoot.querySelector('#settingsToggle'),
+      settingsContent: this.shadowRoot.querySelector('#settingsContent'),
+      chevron:      this.shadowRoot.querySelector('#chevron'),
     };
 
-    // Tap → more-info
-    this._el.card.addEventListener('click', (ev) => {
-      // Don't fire if user clicked something interactive in the future
-      const e = new Event('hass-more-info', { bubbles: true, composed: true });
-      e.detail = { entityId: this._config.entity };
-      this.dispatchEvent(e);
+    // Click on hero/main → more-info (skip settings)
+    [this._el.hero, this.shadowRoot.querySelector('.main'), this._el.chips].forEach(zone => {
+      zone.addEventListener('click', (e) => {
+        const ev = new Event('hass-more-info', { bubbles: true, composed: true });
+        ev.detail = { entityId: this._config.entity };
+        this.dispatchEvent(ev);
+      });
     });
 
+    // Settings panel: stop propagation so it doesn't trigger more-info
+    this._el.settings.addEventListener('click', (e) => e.stopPropagation());
+    this._el.settings.addEventListener('input', (e) => e.stopPropagation());
+    this._el.settings.addEventListener('change', (e) => e.stopPropagation());
+
+    // Settings panel visibility
+    if (this._config.show_settings === false) {
+      this._el.settings.style.display = 'none';
+    } else if (this._config.show_settings === 'expanded') {
+      this._el.settingsContent.classList.add('expanded');
+      this._el.settingsToggle.classList.add('expanded');
+      this._el.settingsToggle.style.display = 'none'; // no toggle row
+    } else {
+      // collapsible (default), starts collapsed
+      this._el.settingsToggle.addEventListener('click', () => {
+        const isOpen = this._el.settingsContent.classList.toggle('expanded');
+        this._el.settingsToggle.classList.toggle('expanded', isOpen);
+      });
+    }
+
+    // Build settings rows once
+    this._buildSettings();
+
     this._built = true;
+  }
+
+  _buildSettings() {
+    const container = this._el.settingsContent;
+    container.innerHTML = '';
+    this._sliders = {};
+    this._toggles = {};
+
+    for (const key of CONTROL_ORDER) {
+      const ctrl = this._config.controls[key];
+      if (!ctrl) continue;
+
+      if (ctrl.type === 'toggle') {
+        const row = document.createElement('div');
+        row.className = 'setting-row toggle-row';
+        row.innerHTML = `
+          <div class="setting-label">
+            <ha-icon icon="mdi:robot"></ha-icon>
+            <span>${this._escape(ctrl.label)}</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" data-key="${key}">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        `;
+        container.appendChild(row);
+        const input = row.querySelector('input');
+        input.addEventListener('change', () => this._onToggleChange(ctrl, input.checked));
+        this._toggles[key] = { input, ctrl };
+      } else {
+        const row = document.createElement('div');
+        row.className = 'setting-row slider-row';
+        row.innerHTML = `
+          <div class="setting-header">
+            <div class="setting-label">
+              <ha-icon icon="${ctrl.icon || 'mdi:tune'}"></ha-icon>
+              <span>${this._escape(ctrl.label)}</span>
+            </div>
+            <div class="setting-value">
+              <span class="setting-value-main" data-key="${key}-val">—</span>
+              <span class="setting-value-sub"  data-key="${key}-sub"></span>
+            </div>
+          </div>
+          <input type="range" class="slider" data-key="${key}" min="0" max="100" step="1" value="0">
+        `;
+        container.appendChild(row);
+        const slider = row.querySelector('.slider');
+        const valEl  = row.querySelector(`[data-key="${key}-val"]`);
+        const subEl  = row.querySelector(`[data-key="${key}-sub"]`);
+
+        // Drag tracking
+        slider._dragging = false;
+        const stopDrag = () => { slider._dragging = false; };
+        slider.addEventListener('pointerdown', () => { slider._dragging = true; });
+        slider.addEventListener('pointerup',     stopDrag);
+        slider.addEventListener('pointercancel', stopDrag);
+        slider.addEventListener('pointerleave',  stopDrag);
+
+        slider.addEventListener('input', () => {
+          this._updateSliderFill(slider);
+          valEl.textContent = this._formatSliderValue(slider, ctrl);
+          // Debounced service call
+          clearTimeout(slider._timer);
+          slider._timer = setTimeout(() => {
+            this._onSliderChange(ctrl, Number(slider.value));
+          }, 250);
+        });
+
+        this._sliders[key] = { slider, valEl, subEl, ctrl };
+      }
+    }
   }
 
   // ---------- Render ----------
@@ -198,20 +331,18 @@ class CumulusSolaireCard extends HTMLElement {
     this._el.heroIcon.classList.toggle('active', m.active);
     this._el.heroIconEl.setAttribute('icon', m.icon);
 
-    // Hero text
     this._el.heroTitle.textContent = m.title;
     this._el.heroReason.textContent = reason;
 
-    // Time
     const now = new Date();
     this._el.heroTime.textContent =
       String(now.getHours()).padStart(2, '0') + ':' +
       String(now.getMinutes()).padStart(2, '0');
 
-    // Dial + forecast + chips
     this._renderDial(a);
     this._renderForecast(a);
     this._renderChips(a);
+    this._renderSettings(a);
   }
 
   _mode(a) {
@@ -251,10 +382,8 @@ class CumulusSolaireCard extends HTMLElement {
       return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${rad} ${rad} 0 ${large} ${dir} ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
     };
 
-    // Background arc (always full)
     this._el.dialBg.setAttribute('d', arc(A_MIN, A_MAX));
 
-    // Fill arc up to current temp
     const temp = (a.water_temp != null && !isNaN(a.water_temp)) ? Number(a.water_temp) : null;
     const tA = temp != null ? tToA(temp) : A_MIN;
     if (temp != null && tA > A_MIN + 0.5) {
@@ -263,19 +392,17 @@ class CumulusSolaireCard extends HTMLElement {
       this._el.dialFill.setAttribute('d', '');
     }
 
-    // Ticks
     const ticks = [];
-    if (a.min_temp != null)          ticks.push({ v: Number(a.min_temp),         color: '#ef5350', big: false });
+    if (a.min_temp != null) ticks.push({ v: Number(a.min_temp), color: '#ef5350', big: false });
     if (a.forcage_threshold != null && a.forcage_threshold !== a.min_temp) {
       ticks.push({ v: Number(a.forcage_threshold), color: '#fb8c00', big: false });
     }
     const reach = a.reach_for ?? a.target_temp;
-    if (reach != null)               ticks.push({ v: Number(reach),              color: '#43a047', big: true  });
+    if (reach != null) ticks.push({ v: Number(reach), color: '#43a047', big: true });
     if (a.legionella_due === true && reach !== 60) {
       ticks.push({ v: 60, color: '#8e24aa', big: false });
     }
 
-    // Build tick svg
     while (this._el.dialTicks.firstChild) this._el.dialTicks.removeChild(this._el.dialTicks.firstChild);
     ticks.forEach(t => {
       if (t.v == null || isNaN(t.v) || t.v < T_MIN || t.v > T_MAX) return;
@@ -293,7 +420,6 @@ class CumulusSolaireCard extends HTMLElement {
       this._el.dialTicks.appendChild(line);
     });
 
-    // Center labels
     this._el.dialTemp.textContent = (temp != null) ? `${temp.toFixed(1)}°` : '—';
     if (reach != null) {
       this._el.dialTarget.textContent = `→ ${Number(reach).toFixed(0)}°C`;
@@ -328,7 +454,6 @@ class CumulusSolaireCard extends HTMLElement {
     const maxW = Math.max(0.5, ...points.map(p => p.w));
     const wToY = (w) => padTop + usableH - (w / maxW) * usableH;
 
-    // Smooth curve through points
     const screenPts = points.map(p => ({ x: tToX(p.t), y: wToY(p.w) }));
     const linePath = this._smoothPath(screenPts);
 
@@ -345,7 +470,6 @@ class CumulusSolaireCard extends HTMLElement {
       this._el.forecastArea.setAttribute('d', '');
     }
 
-    // Window overlay
     if (a.window_start && a.window_end) {
       const wsX = tToX(new Date(a.window_start).getTime());
       const weX = tToX(new Date(a.window_end).getTime());
@@ -358,14 +482,12 @@ class CumulusSolaireCard extends HTMLElement {
       this._el.forecastWindow.style.opacity = '0';
     }
 
-    // Now cursor
     const nowX = tToX(Date.now());
     this._el.forecastNow.setAttribute('x1', nowX.toFixed(1));
     this._el.forecastNow.setAttribute('x2', nowX.toFixed(1));
     this._el.forecastNow.setAttribute('y1', padTop);
     this._el.forecastNow.setAttribute('y2', padTop + usableH);
 
-    // Hour ticks
     while (this._el.forecastTicks.firstChild) this._el.forecastTicks.removeChild(this._el.forecastTicks.firstChild);
     [6, 9, 12, 15, 18, 21].forEach(h => {
       const t = new Date(dayStart);
@@ -380,14 +502,12 @@ class CumulusSolaireCard extends HTMLElement {
       this._el.forecastTicks.appendChild(text);
     });
 
-    // Stale flag
     if (a.solcast_stale === true) {
       this._el.forecastStale.textContent = `⚠️ ${a.solcast_age_hours ?? '?'}h`;
     } else {
       this._el.forecastStale.textContent = '';
     }
 
-    // Meta line
     const parts = [];
     if (a.window_start && a.window_end && a.duration_minutes > 0) {
       const ws = new Date(a.window_start);
@@ -402,9 +522,6 @@ class CumulusSolaireCard extends HTMLElement {
       const labels = { poor: 'temps faible', good: 'temps fort', legionella: 'cycle Legionella' };
       const lbl = labels[a.tomorrow_mode] || a.tomorrow_mode;
       parts.push(`<span>Demain : ${this._escape(lbl)}</span>`);
-    }
-    if (a.kwhTomorrow != null && a.tomorrow_forecast_kwh != null) {
-      // skip duplicate
     }
     this._el.forecastMeta.innerHTML = parts.join('');
   }
@@ -474,6 +591,104 @@ class CumulusSolaireCard extends HTMLElement {
     `).join('');
   }
 
+  // ---------- Settings ----------
+
+  _renderSettings(autoAttrs) {
+    if (this._config.show_settings === false) return;
+
+    // Sliders
+    for (const [key, info] of Object.entries(this._sliders || {})) {
+      const so = this._hass.states[info.ctrl.entity];
+      const row = info.slider.closest('.setting-row');
+      if (!so) {
+        row.classList.add('missing');
+        info.valEl.textContent = '—';
+        continue;
+      }
+      row.classList.remove('missing');
+
+      const minA  = parseFloat(so.attributes.min);
+      const maxA  = parseFloat(so.attributes.max);
+      const stepA = parseFloat(so.attributes.step);
+      const val   = parseFloat(so.state);
+
+      if (!isNaN(minA))  info.slider.min  = minA;
+      if (!isNaN(maxA))  info.slider.max  = maxA;
+      if (!isNaN(stepA)) info.slider.step = stepA;
+
+      if (!info.slider._dragging && !isNaN(val)) {
+        info.slider.value = val;
+        this._updateSliderFill(info.slider);
+        info.valEl.textContent = this._formatSliderValue(info.slider, info.ctrl, val, so);
+      }
+
+      // Subtitle (e.g., effective_trigger from cumulus_automation)
+      if (info.ctrl.subtitleAttr) {
+        const subVal = autoAttrs[info.ctrl.subtitleAttr];
+        if (subVal != null && Number(subVal) !== val) {
+          const unit = info.ctrl.subtitleUnit || '';
+          info.subEl.textContent = `${info.ctrl.subtitleLabel || ''} ${Math.round(subVal)}${unit ? ' ' + unit : ''}`;
+          info.subEl.style.display = '';
+        } else {
+          info.subEl.style.display = 'none';
+        }
+      }
+    }
+
+    // Toggles
+    for (const [key, info] of Object.entries(this._toggles || {})) {
+      const so = this._hass.states[info.ctrl.entity];
+      const row = info.input.closest('.setting-row');
+      if (!so) {
+        row.classList.add('missing');
+        continue;
+      }
+      row.classList.remove('missing');
+      info.input.checked = (so.state === 'on');
+    }
+  }
+
+  _updateSliderFill(slider) {
+    const min = Number(slider.min) || 0;
+    const max = Number(slider.max) || 100;
+    const val = Number(slider.value) || 0;
+    const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+    slider.style.setProperty('--fill-pct', `${pct}%`);
+  }
+
+  _formatSliderValue(slider, ctrl, value, stateObj) {
+    const v = (value != null) ? value : Number(slider.value);
+    const so = stateObj || this._hass.states[ctrl.entity];
+    const unit = so?.attributes?.unit_of_measurement || '';
+    const step = parseFloat(slider.step) || 1;
+    const digits = step >= 1 ? 0 : (step >= 0.1 ? 1 : 2);
+    return `${v.toFixed(digits)}${unit ? ' ' + unit : ''}`;
+  }
+
+  _onSliderChange(ctrl, value) {
+    if (!this._hass) return;
+    const domain = ctrl.entity.split('.')[0];
+    if (domain !== 'input_number' && domain !== 'number') return;
+    this._hass.callService(domain, 'set_value', {
+      entity_id: ctrl.entity,
+      value,
+    });
+  }
+
+  _onToggleChange(ctrl, checked) {
+    if (!this._hass) return;
+    const domain = ctrl.entity.split('.')[0];
+    if (domain === 'input_boolean') {
+      this._hass.callService('input_boolean', checked ? 'turn_on' : 'turn_off', {
+        entity_id: ctrl.entity,
+      });
+    } else if (domain === 'switch') {
+      this._hass.callService('switch', checked ? 'turn_on' : 'turn_off', {
+        entity_id: ctrl.entity,
+      });
+    }
+  }
+
   _escape(s) {
     if (s == null) return '';
     return String(s).replace(/[&<>"']/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]));
@@ -492,7 +707,6 @@ class CumulusSolaireCard extends HTMLElement {
       ha-card {
         padding: 0;
         overflow: hidden;
-        cursor: pointer;
       }
 
       /* Accent bar */
@@ -526,6 +740,7 @@ class CumulusSolaireCard extends HTMLElement {
         gap: 14px;
         align-items: center;
         padding: 14px 18px 6px 18px;
+        cursor: pointer;
       }
       .hero-icon {
         width: 48px;
@@ -546,9 +761,7 @@ class CumulusSolaireCard extends HTMLElement {
         0%, 100% { transform: scale(1); }
         50%      { transform: scale(1.06); }
       }
-      .hero-text {
-        min-width: 0;
-      }
+      .hero-text { min-width: 0; }
       .hero-title {
         font-size: 1.05rem;
         font-weight: 600;
@@ -570,130 +783,55 @@ class CumulusSolaireCard extends HTMLElement {
         font-weight: 500;
       }
 
-      /* Main (dial + forecast) */
+      /* Main */
       .main {
         display: grid;
         grid-template-columns: 200px 1fr;
         gap: 18px;
         padding: 6px 18px 8px 18px;
         align-items: center;
+        cursor: pointer;
       }
       @media (max-width: 520px) {
         .main { grid-template-columns: 1fr; }
         .dial { max-width: 220px; margin: 0 auto; }
       }
-
-      .dial svg {
-        display: block;
-        width: 100%;
-        height: auto;
-      }
-      #dialBg {
-        fill: none;
-        stroke: var(--csc-divider);
-        stroke-width: 14;
-        stroke-linecap: round;
-      }
-      #dialFill {
-        fill: none;
-        stroke: url(#csc-fill-grad);
-        stroke-width: 14;
-        stroke-linecap: round;
-      }
-      #dialTemp {
-        font-size: 38px;
-        font-weight: 700;
-        fill: var(--csc-text);
-        font-variant-numeric: tabular-nums;
-      }
-      #dialTarget {
-        font-size: 13px;
-        fill: var(--csc-text-2);
-        font-weight: 500;
-      }
-      #dialUnit {
-        font-size: 10px;
-        fill: var(--csc-text-2);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
+      .dial svg { display: block; width: 100%; height: auto; }
+      #dialBg   { fill: none; stroke: var(--csc-divider); stroke-width: 14; stroke-linecap: round; }
+      #dialFill { fill: none; stroke: url(#csc-fill-grad); stroke-width: 14; stroke-linecap: round; }
+      #dialTemp { font-size: 38px; font-weight: 700; fill: var(--csc-text); font-variant-numeric: tabular-nums; }
+      #dialTarget { font-size: 13px; fill: var(--csc-text-2); font-weight: 500; }
+      #dialUnit { font-size: 10px; fill: var(--csc-text-2); text-transform: uppercase; letter-spacing: 0.08em; }
 
       /* Forecast */
-      .forecast {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 0;
-      }
+      .forecast { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
       .forecast-title {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        font-size: 0.72rem;
-        color: var(--csc-text-2);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        display: flex; justify-content: space-between; align-items: baseline;
+        font-size: 0.72rem; color: var(--csc-text-2);
+        text-transform: uppercase; letter-spacing: 0.06em;
       }
-      .forecast-stale {
-        color: #e53935;
-        font-weight: 600;
-      }
-      .forecast svg {
-        width: 100%;
-        height: 110px;
-        overflow: visible;
-      }
-      #forecastWindow {
-        fill: rgba(76,175,80,0.20);
-        transition: opacity 0.4s ease;
-      }
-      #forecastArea {
-        fill: url(#csc-area-grad);
-        stroke: none;
-      }
-      #forecastLine {
-        fill: none;
-        stroke: #FFC107;
-        stroke-width: 1.5;
-      }
-      #forecastNow {
-        stroke: var(--csc-accent);
-        stroke-width: 2;
-        stroke-dasharray: 3 3;
-        opacity: 0.85;
-      }
-      .forecast-tick {
-        font-size: 9px;
-        fill: var(--csc-text-2);
-      }
+      .forecast-stale { color: #e53935; font-weight: 600; }
+      .forecast svg { width: 100%; height: 110px; overflow: visible; }
+      #forecastWindow { fill: rgba(76,175,80,0.20); transition: opacity 0.4s ease; }
+      #forecastArea   { fill: url(#csc-area-grad); stroke: none; }
+      #forecastLine   { fill: none; stroke: #FFC107; stroke-width: 1.5; }
+      #forecastNow    { stroke: var(--csc-accent); stroke-width: 2; stroke-dasharray: 3 3; opacity: 0.85; }
+      .forecast-tick  { font-size: 9px; fill: var(--csc-text-2); }
       .forecast-meta {
-        font-size: 0.74rem;
-        color: var(--csc-text-2);
-        display: flex;
-        gap: 14px;
-        flex-wrap: wrap;
-        min-height: 1em;
+        font-size: 0.74rem; color: var(--csc-text-2);
+        display: flex; gap: 14px; flex-wrap: wrap; min-height: 1em;
       }
-      .forecast-meta .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-      }
-      .forecast-meta .swatch {
-        width: 10px;
-        height: 10px;
-        border-radius: 2px;
-      }
-      .forecast-meta .swatch.win {
-        background: rgba(76,175,80,0.5);
-      }
+      .forecast-meta .badge { display: inline-flex; align-items: center; gap: 5px; }
+      .forecast-meta .swatch { width: 10px; height: 10px; border-radius: 2px; }
+      .forecast-meta .swatch.win { background: rgba(76,175,80,0.5); }
 
       /* Chips */
       .chips {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
         gap: 8px;
-        padding: 6px 18px 16px 18px;
+        padding: 6px 18px 12px 18px;
+        cursor: pointer;
       }
       .chip {
         display: grid;
@@ -708,27 +846,188 @@ class CumulusSolaireCard extends HTMLElement {
             color-mix(in srgb, var(--chip-color)  6%, transparent));
         transition: background 0.3s ease;
       }
-      /* Fallback for browsers without color-mix */
       @supports not (background: color-mix(in srgb, red, blue)) {
         .chip { background: var(--csc-divider); }
       }
-      .chip ha-icon {
-        --mdc-icon-size: 20px;
-        color: var(--chip-color);
+      .chip ha-icon { --mdc-icon-size: 20px; color: var(--chip-color); }
+      .chip .v { font-size: 0.95rem; font-weight: 700; color: var(--csc-text); font-variant-numeric: tabular-nums; line-height: 1.1; }
+      .chip .l { font-size: 0.68rem; color: var(--csc-text-2); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
+
+      /* Settings */
+      .settings { border-top: 1px solid var(--csc-divider); }
+      .settings-toggle {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 18px;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.2s;
       }
-      .chip .v {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: var(--csc-text);
-        font-variant-numeric: tabular-nums;
-        line-height: 1.1;
+      .settings-toggle:hover {
+        background: color-mix(in srgb, var(--csc-text-2) 6%, transparent);
       }
-      .chip .l {
-        font-size: 0.68rem;
+      .settings-toggle-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        font-weight: 500;
         color: var(--csc-text-2);
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        margin-top: 1px;
+      }
+      .settings-toggle-label ha-icon { --mdc-icon-size: 18px; }
+      .chevron {
+        --mdc-icon-size: 22px;
+        color: var(--csc-text-2);
+        transition: transform 0.3s ease;
+      }
+      .settings-toggle.expanded .chevron { transform: rotate(180deg); }
+
+      .settings-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.4s ease, padding 0.3s ease;
+        padding: 0 18px;
+      }
+      .settings-content.expanded {
+        max-height: 600px;
+        padding: 4px 18px 16px 18px;
+      }
+
+      .setting-row {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px 0;
+      }
+      .setting-row + .setting-row {
+        border-top: 1px solid var(--csc-divider);
+      }
+      .setting-row.missing { opacity: 0.4; pointer-events: none; }
+
+      .toggle-row {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .setting-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+      }
+      .setting-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9rem;
+        color: var(--csc-text);
+        font-weight: 500;
+      }
+      .setting-label ha-icon {
+        --mdc-icon-size: 18px;
+        color: var(--csc-text-2);
+      }
+      .setting-value {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-variant-numeric: tabular-nums;
+      }
+      .setting-value-main {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--csc-accent);
+      }
+      .setting-value-sub {
+        font-size: 0.75rem;
+        color: var(--csc-text-2);
+      }
+
+      /* Slider */
+      .slider {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--csc-divider);
+        background-image: linear-gradient(var(--csc-accent), var(--csc-accent));
+        background-size: var(--fill-pct, 0%) 100%;
+        background-repeat: no-repeat;
+        outline: none;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      }
+      .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--csc-accent);
+        cursor: pointer;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+      .slider::-webkit-slider-thumb:hover {
+        transform: scale(1.15);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+      }
+      .slider::-webkit-slider-thumb:active {
+        transform: scale(1.25);
+      }
+      .slider::-moz-range-thumb {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--csc-accent);
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        transition: transform 0.15s ease;
+      }
+      .slider::-moz-range-thumb:hover { transform: scale(1.15); }
+      .slider::-moz-range-thumb:active { transform: scale(1.25); }
+
+      /* Switch */
+      .switch {
+        position: relative;
+        width: 44px;
+        height: 24px;
+        flex-shrink: 0;
+      }
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .switch-track {
+        position: absolute;
+        inset: 0;
+        background: var(--csc-divider);
+        border-radius: 12px;
+        cursor: pointer;
+        transition: background 0.25s ease;
+      }
+      .switch-thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 20px;
+        height: 20px;
+        background: white;
+        border-radius: 50%;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+        transition: transform 0.25s ease;
+      }
+      .switch input:checked ~ .switch-track {
+        background: var(--csc-accent);
+      }
+      .switch input:checked ~ .switch-track .switch-thumb {
+        transform: translateX(20px);
       }
     `;
   }
@@ -742,7 +1041,7 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'cumulus-solaire-card',
   name: 'Cumulus Solaire',
-  description: 'Carte tableau de bord pour l\'automatisation cumulus solaire (Node-RED v4)',
+  description: "Carte tableau de bord pour l'automatisation cumulus solaire (Node-RED v4)",
   preview: false,
   documentationURL: 'https://github.com/USER/cumulus-solaire-card',
 });

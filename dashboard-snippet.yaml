@@ -1,24 +1,41 @@
-# Coller dans la section "Eau chaude" de votre dashboard,
-# en remplacement (ou en plus) de la grosse carte bubble-card "Automatisation"
-# et de la rangée de chips de diagnostic.
-#
-# Cette carte unique remplace visuellement environ 3 cartes du dashboard v4 :
-# - la bubble-card "Automatisation" avec ses sub-buttons stylés
-# - les chips de diagnostic
-# - la mushroom-template-card "raison de la décision"
+# =============================================================
+# Cumulus Solaire Card — exemples
+# =============================================================
 
+# --- Minimal (utilise tous les défauts, panneau réglages repliable) ---
+- type: custom:cumulus-solaire-card
+  entity: sensor.cumulus_automation
+
+
+# --- Avec capteur Solcast personnalisé ---
 - type: custom:cumulus-solaire-card
   entity: sensor.cumulus_automation
   forecast_entity: sensor.solcast_pv_forecast_previsions_pour_aujourd_hui
 
-# Optionnel : vous pouvez la mettre aussi dans le header (à la place
-# du conditional cumulus_automation actuel) si vous voulez l'avoir
-# en permanence visible :
-#
-# header:
-#   card:
-#     type: vertical-stack
-#     cards:
-#       - ...
-#       - type: custom:cumulus-solaire-card
-#         entity: sensor.cumulus_automation
+
+# --- Sans panneau réglages (par exemple pour le header) ---
+- type: custom:cumulus-solaire-card
+  entity: sensor.cumulus_automation
+  show_settings: false
+
+
+# --- Réglages toujours dépliés (carte plus haute) ---
+- type: custom:cumulus-solaire-card
+  entity: sensor.cumulus_automation
+  show_settings: expanded
+
+
+# --- Avec helpers personnalisés ou contrôles masqués ---
+- type: custom:cumulus-solaire-card
+  entity: sensor.cumulus_automation
+  controls:
+    efficiency: false   # masque le slider rendement
+    target: input_number.mon_helper_cible_perso
+
+# =============================================================
+# Cette carte unique remplace plusieurs blocs de votre dashboard v4 :
+#   - bubble-card "Automatisation" + ses sub-buttons
+#   - chips de diagnostic
+#   - mushroom-template-card "raison de la décision"
+#   - bubble-cards des 6 réglages (toggle + 5 sliders)
+# =============================================================
