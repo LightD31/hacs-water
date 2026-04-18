@@ -2,7 +2,7 @@
  * Cumulus Solaire Card
  *
  * Custom Lovelace card pour le sensor.cumulus_automation produit par
- * le flow Node-RED v4 du cumulus solaire.
+ * le flow Node-RED v5 du cumulus solaire.
  *
  * Sections :
  *   1. Hero (état + raison + heure)
@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -24,6 +24,7 @@ console.info(
 
 const MODES = {
   'disabled':            { color: '#9e9e9e', icon: 'mdi:robot-off',                 title: 'Automatisation désactivée', active: false },
+  'sensor-error':        { color: '#e53935', icon: 'mdi:thermometer-off',           title: 'Sonde HS — état maintenu',  active: false },
   'legionella-critical': { color: '#e53935', icon: 'mdi:bacteria',                  title: 'Cycle anti-Legionella',     active: true  },
   'anti-injection':      { color: '#43a047', icon: 'mdi:transmission-tower-export', title: 'Charge le surplus solaire', active: true  },
   'legionella-due':      { color: '#fb8c00', icon: 'mdi:bacteria-outline',          title: 'Legionella à programmer',   active: false },
@@ -319,7 +320,6 @@ class CumulusSolaireCard extends HTMLElement {
     }
 
     const a = so.attributes || {};
-    const reason = so.state || '';
     const modeKey = this._mode(a);
     const m = MODES[modeKey];
 
@@ -331,8 +331,10 @@ class CumulusSolaireCard extends HTMLElement {
     this._el.heroIcon.classList.toggle('active', m.active);
     this._el.heroIconEl.setAttribute('icon', m.icon);
 
-    this._el.heroTitle.textContent = m.title;
-    this._el.heroReason.textContent = reason;
+    // v5: so.state is the canonical human-readable mode label from the flow;
+    // a.reason holds the detailed "why".
+    this._el.heroTitle.textContent = so.state || m.title;
+    this._el.heroReason.textContent = a.reason || '';
 
     const now = new Date();
     this._el.heroTime.textContent =
@@ -347,6 +349,7 @@ class CumulusSolaireCard extends HTMLElement {
 
   _mode(a) {
     if (a.enabled === false) return 'disabled';
+    if (a.temp_sensor_available === false) return 'sensor-error';
     if (a.legionella_critical === true) return 'legionella-critical';
     if (a.anti_injection_active === true) return 'anti-injection';
     if (a.solcast_stale === true && !a.is_forcing) return 'solcast-stale';
@@ -421,7 +424,9 @@ class CumulusSolaireCard extends HTMLElement {
     });
 
     this._el.dialTemp.textContent = (temp != null) ? `${temp.toFixed(1)}°` : '—';
-    if (reach != null) {
+    if (a.temp_sensor_available === false) {
+      this._el.dialTarget.textContent = 'sonde indisponible';
+    } else if (reach != null) {
       this._el.dialTarget.textContent = `→ ${Number(reach).toFixed(0)}°C`;
     } else {
       this._el.dialTarget.textContent = '';
@@ -514,9 +519,13 @@ class CumulusSolaireCard extends HTMLElement {
       const we = new Date(a.window_end);
       const fmt = (d) => `${String(d.getHours()).padStart(2,'0')}h${String(d.getMinutes()).padStart(2,'0')}`;
       const avg = a.window_avg_w ? ` · ${Math.round(a.window_avg_w)} W` : '';
-      parts.push(`<span class="badge"><span class="swatch win"></span> Fenêtre ${fmt(ws)}–${fmt(we)}${avg}</span>`);
+      const min = a.window_min_avg_w ? ` (min ${Math.round(a.window_min_avg_w)} W)` : '';
+      parts.push(`<span class="badge"><span class="swatch win"></span> Fenêtre ${fmt(ws)}–${fmt(we)}${avg}${min}</span>`);
     } else if (a.window_skipped_reason) {
       parts.push(`<span>${this._escape(a.window_skipped_reason)}</span>`);
+    }
+    if (a.today_remaining_kwh != null && a.today_remaining_kwh > 0) {
+      parts.push(`<span>Reste ${Number(a.today_remaining_kwh).toFixed(1)} kWh</span>`);
     }
     if (a.tomorrow_mode && a.tomorrow_mode !== 'normal') {
       const labels = { poor: 'temps faible', good: 'temps fort', legionella: 'cycle Legionella' };
@@ -1041,7 +1050,7 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'cumulus-solaire-card',
   name: 'Cumulus Solaire',
-  description: "Carte tableau de bord pour l'automatisation cumulus solaire (Node-RED v4)",
+  description: "Carte tableau de bord pour l'automatisation cumulus solaire (Node-RED v5)",
   preview: false,
   documentationURL: 'https://github.com/USER/cumulus-solaire-card',
 });
