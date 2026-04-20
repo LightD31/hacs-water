@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.4.0';
+const VERSION = '1.6.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -159,6 +159,7 @@ class CumulusSolaireCard extends HTMLElement {
                 </linearGradient>
               </defs>
               <rect id="forecastWindow"></rect>
+              <path id="forecastBand"></path>
               <path id="forecastArea"></path>
               <path id="forecastLine"></path>
               <line id="forecastNow"></line>
@@ -168,6 +169,7 @@ class CumulusSolaireCard extends HTMLElement {
               <span>Demain</span>
             </div>
             <svg id="forecastTomorrowSvg" viewBox="0 0 400 80" preserveAspectRatio="none" style="display:none">
+              <path id="forecastTomorrowBand"></path>
               <path id="forecastTomorrowArea"></path>
               <path id="forecastTomorrowLine"></path>
               <g id="forecastTomorrowTicks"></g>
@@ -206,6 +208,7 @@ class CumulusSolaireCard extends HTMLElement {
       dialTemp:     this.shadowRoot.querySelector('#dialTemp'),
       dialTarget:   this.shadowRoot.querySelector('#dialTarget'),
       forecastWindow: this.shadowRoot.querySelector('#forecastWindow'),
+      forecastBand:   this.shadowRoot.querySelector('#forecastBand'),
       forecastArea:   this.shadowRoot.querySelector('#forecastArea'),
       forecastLine:   this.shadowRoot.querySelector('#forecastLine'),
       forecastNow:    this.shadowRoot.querySelector('#forecastNow'),
@@ -214,6 +217,7 @@ class CumulusSolaireCard extends HTMLElement {
       forecastStale:  this.shadowRoot.querySelector('#forecastStale'),
       forecastTomorrowTitle: this.shadowRoot.querySelector('#forecastTomorrowTitle'),
       forecastTomorrowSvg:   this.shadowRoot.querySelector('#forecastTomorrowSvg'),
+      forecastTomorrowBand:  this.shadowRoot.querySelector('#forecastTomorrowBand'),
       forecastTomorrowArea:  this.shadowRoot.querySelector('#forecastTomorrowArea'),
       forecastTomorrowLine:  this.shadowRoot.querySelector('#forecastTomorrowLine'),
       forecastTomorrowTicks: this.shadowRoot.querySelector('#forecastTomorrowTicks'),
@@ -231,6 +235,16 @@ class CumulusSolaireCard extends HTMLElement {
         ev.detail = { entityId: this._config.entity };
         this.dispatchEvent(ev);
       });
+    });
+
+    // Score badge toggle (delegation — meta is rebuilt on each render)
+    this._scoreBadgeExpanded = false;
+    this._el.forecastMeta.addEventListener('click', (e) => {
+      const tgt = e.target.closest('[data-act="score-toggle"]');
+      if (!tgt) return;
+      e.stopPropagation();
+      this._scoreBadgeExpanded = !this._scoreBadgeExpanded;
+      this._render();
     });
 
     // Settings panel: stop propagation so it doesn't trigger more-info
@@ -474,15 +488,35 @@ class CumulusSolaireCard extends HTMLElement {
     const field = a.forecast_field || 'pv_estimate';
 
     const points = slots
-      .map(s => ({ t: new Date(s.period_start).getTime(), w: Number(s[field] || 0) }))
+      .map(s => ({
+        t: new Date(s.period_start).getTime(),
+        w: Number(s[field] || 0),
+        p10: s.pv_estimate10 != null ? Number(s.pv_estimate10) : null,
+        p90: s.pv_estimate90 != null ? Number(s.pv_estimate90) : null,
+      }))
       .filter(p => !isNaN(p.t) && p.t >= dayStart.getTime() && p.t < dayEndMs)
       .sort((p1, p2) => p1.t - p2.t);
 
-    const maxW = Math.max(0.5, ...points.map(p => p.w));
+    const maxW = Math.max(
+      0.5,
+      ...points.map(p => Math.max(p.w, p.p90 != null ? p.p90 : 0)),
+    );
     const wToY = (w) => padTop + usableH - (w / maxW) * usableH;
 
     const screenPts = points.map(p => ({ x: tToX(p.t), y: wToY(p.w) }));
     const linePath = this._smoothPath(screenPts);
+
+    const hasBand = points.some(p => p.p10 != null && p.p90 != null && p.p90 > p.p10);
+    if (hasBand) {
+      const topPts = points.map(p => ({ x: tToX(p.t), y: wToY(p.p90 != null ? p.p90 : p.w) }));
+      const botPts = points.map(p => ({ x: tToX(p.t), y: wToY(p.p10 != null ? p.p10 : p.w) }));
+      const topPath = this._smoothPath(topPts);
+      const botBack = botPts.slice().reverse()
+        .map(p => `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+      this._el.forecastBand.setAttribute('d', `${topPath} ${botBack} Z`);
+    } else {
+      this._el.forecastBand.setAttribute('d', '');
+    }
 
     if (linePath) {
       this._el.forecastLine.setAttribute('d', linePath);
@@ -549,16 +583,59 @@ class CumulusSolaireCard extends HTMLElement {
     if (a.today_remaining_kwh != null && a.today_remaining_kwh > 0) {
       parts.push(`<span>Reste ${Number(a.today_remaining_kwh).toFixed(1)} kWh</span>`);
     }
-    if (a.tomorrow_mode && a.tomorrow_mode !== 'normal') {
+    if (a.tomorrow_forecast_kwh != null || a.tomorrow_mode) {
       const labels = {
         poor: 'production faible',
         good: 'production élevée',
+        mixed: 'production moyenne',
         legionella: 'cycle Legionella',
       };
-      const lbl = labels[a.tomorrow_mode] || a.tomorrow_mode;
-      parts.push(`<span>Demain : ${this._escape(lbl)}</span>`);
+      const lbl = labels[a.tomorrow_mode] || a.tomorrow_mode || '';
+      const kwh = a.tomorrow_forecast_kwh;
+      const p10 = a.tomorrow_p10_kwh;
+      const p90 = a.tomorrow_p90_kwh;
+      let txt = 'Demain';
+      if (kwh != null) txt += ` : ${Number(kwh).toFixed(1)} kWh`;
+      if (p10 != null && p90 != null && p90 > p10) {
+        txt += ` (${Number(p10).toFixed(1)}–${Number(p90).toFixed(1)})`;
+      }
+      if (lbl) txt += ` · ${lbl}`;
+      parts.push(`<span>${this._escape(txt)}</span>`);
     }
-    this._el.forecastMeta.innerHTML = parts.join('');
+    if (a.day_after_forecast_kwh != null) {
+      parts.push(`<span>J+2 : ${Number(a.day_after_forecast_kwh).toFixed(1)} kWh</span>`);
+    }
+    if (a.forecast_uncertainty != null && a.forecast_uncertainty >= 0.5) {
+      parts.push(`<span title="Écart p10/p90 élevé">Prévision incertaine</span>`);
+    }
+
+    const scoreParts = [];
+    const fmtPct = (v) => Math.round(Number(v) * 100) + '%';
+    if (a.effective_score != null || a.tomorrow_score != null) {
+      const main = a.effective_score != null ? a.effective_score : a.tomorrow_score;
+      if (this._scoreBadgeExpanded) {
+        const sub = [];
+        if (a.tomorrow_score != null)       sub.push(`demain ${fmtPct(a.tomorrow_score)}`);
+        if (a.worst_next2_score != null)    sub.push(`pire J+1/J+2 ${fmtPct(a.worst_next2_score)}`);
+        if (a.tomorrow_weight != null)      sub.push(`poids ${fmtPct(a.tomorrow_weight)}`);
+        if (a.forecast_uncertainty != null) sub.push(`incert. ${fmtPct(a.forecast_uncertainty)}`);
+        scoreParts.push(
+          `<span class="badge score-badge expanded" data-act="score-toggle" title="Cliquer pour réduire">` +
+          `<ha-icon icon="mdi:chart-bell-curve-cumulative"></ha-icon>` +
+          `Score ${fmtPct(main)}${sub.length ? ' · ' + this._escape(sub.join(' · ')) : ''}` +
+          `</span>`
+        );
+      } else {
+        scoreParts.push(
+          `<span class="badge score-badge" data-act="score-toggle" title="Cliquer pour détailler">` +
+          `<ha-icon icon="mdi:chart-bell-curve-cumulative"></ha-icon>` +
+          `Score ${fmtPct(main)}` +
+          `</span>`
+        );
+      }
+    }
+
+    this._el.forecastMeta.innerHTML = [...parts, ...scoreParts].join('');
   }
 
   _renderForecastTomorrow(a) {
@@ -586,7 +663,12 @@ class CumulusSolaireCard extends HTMLElement {
     const field = a.forecast_field || 'pv_estimate';
 
     const points = slots
-      .map(s => ({ t: new Date(s.period_start).getTime(), w: Number(s[field] || 0) }))
+      .map(s => ({
+        t: new Date(s.period_start).getTime(),
+        w: Number(s[field] || 0),
+        p10: s.pv_estimate10 != null ? Number(s.pv_estimate10) : null,
+        p90: s.pv_estimate90 != null ? Number(s.pv_estimate90) : null,
+      }))
       .filter(p => !isNaN(p.t) && p.t >= tStart.getTime() && p.t < tEnd)
       .sort((p1, p2) => p1.t - p2.t);
 
@@ -595,10 +677,25 @@ class CumulusSolaireCard extends HTMLElement {
     this._el.forecastTomorrowTitle.style.display = '';
     this._el.forecastTomorrowSvg.style.display = '';
 
-    const maxW = Math.max(0.5, ...points.map(p => p.w));
+    const maxW = Math.max(
+      0.5,
+      ...points.map(p => Math.max(p.w, p.p90 != null ? p.p90 : 0)),
+    );
     const wToY = (w) => padTop + usableH - (w / maxW) * usableH;
     const screenPts = points.map(p => ({ x: tToX(p.t), y: wToY(p.w) }));
     const linePath = this._smoothPath(screenPts);
+
+    const hasBand = points.some(p => p.p10 != null && p.p90 != null && p.p90 > p.p10);
+    if (hasBand) {
+      const topPts = points.map(p => ({ x: tToX(p.t), y: wToY(p.p90 != null ? p.p90 : p.w) }));
+      const botPts = points.map(p => ({ x: tToX(p.t), y: wToY(p.p10 != null ? p.p10 : p.w) }));
+      const topPath = this._smoothPath(topPts);
+      const botBack = botPts.slice().reverse()
+        .map(p => `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+      this._el.forecastTomorrowBand.setAttribute('d', `${topPath} ${botBack} Z`);
+    } else {
+      this._el.forecastTomorrowBand.setAttribute('d', '');
+    }
 
     if (linePath) {
       this._el.forecastTomorrowLine.setAttribute('d', linePath);
@@ -911,11 +1008,13 @@ class CumulusSolaireCard extends HTMLElement {
       .forecast-stale { color: #e53935; font-weight: 600; }
       .forecast svg { width: 100%; height: 110px; overflow: visible; }
       #forecastWindow { fill: rgba(76,175,80,0.20); transition: opacity 0.4s ease; }
+      #forecastBand   { fill: rgba(255,193,7,0.18); stroke: none; }
       #forecastArea   { fill: url(#csc-area-grad); stroke: none; }
       #forecastLine   { fill: none; stroke: #FFC107; stroke-width: 1.5; }
       #forecastNow    { stroke: var(--csc-accent); stroke-width: 2; stroke-dasharray: 3 3; opacity: 0.85; }
       .forecast-title-tomorrow { margin-top: 4px; opacity: 0.85; }
       #forecastTomorrowSvg { height: 80px; }
+      #forecastTomorrowBand { fill: rgba(144,164,174,0.22); stroke: none; }
       #forecastTomorrowArea { fill: url(#csc-area-grad-tomorrow); stroke: none; }
       #forecastTomorrowLine { fill: none; stroke: #90A4AE; stroke-width: 1.3; stroke-dasharray: 4 2; }
       .forecast-tick  { font-size: 9px; fill: var(--csc-text-2); }
@@ -926,6 +1025,22 @@ class CumulusSolaireCard extends HTMLElement {
       .forecast-meta .badge { display: inline-flex; align-items: center; gap: 5px; }
       .forecast-meta .swatch { width: 10px; height: 10px; border-radius: 2px; }
       .forecast-meta .swatch.win { background: rgba(76,175,80,0.5); }
+      .forecast-meta .score-badge {
+        cursor: pointer;
+        padding: 2px 8px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--csc-accent) 14%, transparent);
+        color: var(--csc-text);
+        transition: background 0.2s ease;
+        user-select: none;
+      }
+      .forecast-meta .score-badge:hover {
+        background: color-mix(in srgb, var(--csc-accent) 24%, transparent);
+      }
+      .forecast-meta .score-badge ha-icon { --mdc-icon-size: 14px; color: var(--csc-accent); }
+      @supports not (background: color-mix(in srgb, red, blue)) {
+        .forecast-meta .score-badge { background: var(--csc-divider); }
+      }
 
       /* Chips */
       .chips {
