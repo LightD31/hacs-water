@@ -1186,12 +1186,16 @@ class CumulusSolaireCardEditor extends HTMLElement {
   }
 
   _dataToConfig(data) {
-    const cfg = { entity: data.entity || '' };
+    const cfg = { ...this._config };
+    cfg.entity = data.entity || '';
     if (data.forecast_entity) cfg.forecast_entity = data.forecast_entity;
+    else delete cfg.forecast_entity;
 
     if (data.show_settings === 'hidden') {
       cfg.show_settings = false;
-    } else if (data.show_settings && data.show_settings !== 'collapsible') {
+    } else if (!data.show_settings || data.show_settings === 'collapsible') {
+      delete cfg.show_settings;
+    } else {
       cfg.show_settings = data.show_settings;
     }
 
@@ -1212,6 +1216,7 @@ class CumulusSolaireCardEditor extends HTMLElement {
       }
     }
     if (hasOverride) cfg.controls = controls;
+    else delete cfg.controls;
 
     return cfg;
   }
