@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.3.1';
+const VERSION = '1.4.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -153,12 +153,24 @@ class CumulusSolaireCard extends HTMLElement {
                   <stop offset="0%"   stop-color="#FFC107" stop-opacity="0.55"/>
                   <stop offset="100%" stop-color="#FFC107" stop-opacity="0.05"/>
                 </linearGradient>
+                <linearGradient id="csc-area-grad-tomorrow" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stop-color="#90A4AE" stop-opacity="0.35"/>
+                  <stop offset="100%" stop-color="#90A4AE" stop-opacity="0.05"/>
+                </linearGradient>
               </defs>
               <rect id="forecastWindow"></rect>
               <path id="forecastArea"></path>
               <path id="forecastLine"></path>
               <line id="forecastNow"></line>
               <g id="forecastTicks"></g>
+            </svg>
+            <div class="forecast-title forecast-title-tomorrow" id="forecastTomorrowTitle" style="display:none">
+              <span>Demain</span>
+            </div>
+            <svg id="forecastTomorrowSvg" viewBox="0 0 400 80" preserveAspectRatio="none" style="display:none">
+              <path id="forecastTomorrowArea"></path>
+              <path id="forecastTomorrowLine"></path>
+              <g id="forecastTomorrowTicks"></g>
             </svg>
             <div class="forecast-meta" id="forecastMeta"></div>
           </div>
@@ -200,6 +212,11 @@ class CumulusSolaireCard extends HTMLElement {
       forecastTicks:  this.shadowRoot.querySelector('#forecastTicks'),
       forecastMeta:   this.shadowRoot.querySelector('#forecastMeta'),
       forecastStale:  this.shadowRoot.querySelector('#forecastStale'),
+      forecastTomorrowTitle: this.shadowRoot.querySelector('#forecastTomorrowTitle'),
+      forecastTomorrowSvg:   this.shadowRoot.querySelector('#forecastTomorrowSvg'),
+      forecastTomorrowArea:  this.shadowRoot.querySelector('#forecastTomorrowArea'),
+      forecastTomorrowLine:  this.shadowRoot.querySelector('#forecastTomorrowLine'),
+      forecastTomorrowTicks: this.shadowRoot.querySelector('#forecastTomorrowTicks'),
       chips:        this.shadowRoot.querySelector('#chips'),
       settings:     this.shadowRoot.querySelector('#settings'),
       settingsToggle: this.shadowRoot.querySelector('#settingsToggle'),
@@ -347,6 +364,7 @@ class CumulusSolaireCard extends HTMLElement {
 
     this._renderDial(a);
     this._renderForecast(a);
+    this._renderForecastTomorrow(a);
     this._renderChips(a);
     this._renderSettings(a);
   }
@@ -532,11 +550,84 @@ class CumulusSolaireCard extends HTMLElement {
       parts.push(`<span>Reste ${Number(a.today_remaining_kwh).toFixed(1)} kWh</span>`);
     }
     if (a.tomorrow_mode && a.tomorrow_mode !== 'normal') {
-      const labels = { poor: 'temps faible', good: 'temps fort', legionella: 'cycle Legionella' };
+      const labels = {
+        poor: 'production faible',
+        good: 'production élevée',
+        legionella: 'cycle Legionella',
+      };
       const lbl = labels[a.tomorrow_mode] || a.tomorrow_mode;
       parts.push(`<span>Demain : ${this._escape(lbl)}</span>`);
     }
     this._el.forecastMeta.innerHTML = parts.join('');
+  }
+
+  _renderForecastTomorrow(a) {
+    const tomorrowEntityId = this._config.forecast_entity_tomorrow;
+    const hide = () => {
+      this._el.forecastTomorrowTitle.style.display = 'none';
+      this._el.forecastTomorrowSvg.style.display = 'none';
+    };
+    if (!tomorrowEntityId) return hide();
+    const fEntity = this._hass?.states?.[tomorrowEntityId];
+    const slots = fEntity?.attributes?.detailedForecast || [];
+    if (!slots.length) return hide();
+
+    const W = 400, H = 80;
+    const padTop = 4, padBottom = 16;
+    const usableH = H - padTop - padBottom;
+
+    const tStart = new Date();
+    tStart.setHours(0, 0, 0, 0);
+    tStart.setDate(tStart.getDate() + 1);
+    const tEnd = tStart.getTime() + 24 * 3600 * 1000;
+    const dayMs = tEnd - tStart.getTime();
+
+    const tToX = (t) => Math.max(0, Math.min(W, ((t - tStart.getTime()) / dayMs) * W));
+    const field = a.forecast_field || 'pv_estimate';
+
+    const points = slots
+      .map(s => ({ t: new Date(s.period_start).getTime(), w: Number(s[field] || 0) }))
+      .filter(p => !isNaN(p.t) && p.t >= tStart.getTime() && p.t < tEnd)
+      .sort((p1, p2) => p1.t - p2.t);
+
+    if (!points.length) return hide();
+
+    this._el.forecastTomorrowTitle.style.display = '';
+    this._el.forecastTomorrowSvg.style.display = '';
+
+    const maxW = Math.max(0.5, ...points.map(p => p.w));
+    const wToY = (w) => padTop + usableH - (w / maxW) * usableH;
+    const screenPts = points.map(p => ({ x: tToX(p.t), y: wToY(p.w) }));
+    const linePath = this._smoothPath(screenPts);
+
+    if (linePath) {
+      this._el.forecastTomorrowLine.setAttribute('d', linePath);
+      const baseY = padTop + usableH;
+      const firstX = screenPts[0].x;
+      const lastX  = screenPts[screenPts.length - 1].x;
+      this._el.forecastTomorrowArea.setAttribute('d',
+        linePath + ` L ${lastX.toFixed(1)} ${baseY.toFixed(1)} L ${firstX.toFixed(1)} ${baseY.toFixed(1)} Z`
+      );
+    } else {
+      this._el.forecastTomorrowLine.setAttribute('d', '');
+      this._el.forecastTomorrowArea.setAttribute('d', '');
+    }
+
+    while (this._el.forecastTomorrowTicks.firstChild) {
+      this._el.forecastTomorrowTicks.removeChild(this._el.forecastTomorrowTicks.firstChild);
+    }
+    [6, 9, 12, 15, 18, 21].forEach(h => {
+      const t = new Date(tStart);
+      t.setHours(h);
+      const x = tToX(t.getTime());
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', x.toFixed(1));
+      text.setAttribute('y', H - 4);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('class', 'forecast-tick');
+      text.textContent = `${h}h`;
+      this._el.forecastTomorrowTicks.appendChild(text);
+    });
   }
 
   _smoothPath(pts) {
@@ -584,12 +675,6 @@ class CumulusSolaireCard extends HTMLElement {
                                      : '#43a047',
         value: (a.days_since_high_temp != null) ? `${a.days_since_high_temp} j` : '—',
         label: 'Sans 60°C',
-      },
-      {
-        icon: a.solcast_stale ? 'mdi:cloud-off-outline' : 'mdi:cloud-check-outline',
-        color: a.solcast_stale ? '#e53935' : '#43a047',
-        value: (a.solcast_age_hours != null) ? `${a.solcast_age_hours} h` : '—',
-        label: 'Solcast',
       },
     ];
 
@@ -829,6 +914,10 @@ class CumulusSolaireCard extends HTMLElement {
       #forecastArea   { fill: url(#csc-area-grad); stroke: none; }
       #forecastLine   { fill: none; stroke: #FFC107; stroke-width: 1.5; }
       #forecastNow    { stroke: var(--csc-accent); stroke-width: 2; stroke-dasharray: 3 3; opacity: 0.85; }
+      .forecast-title-tomorrow { margin-top: 4px; opacity: 0.85; }
+      #forecastTomorrowSvg { height: 80px; }
+      #forecastTomorrowArea { fill: url(#csc-area-grad-tomorrow); stroke: none; }
+      #forecastTomorrowLine { fill: none; stroke: #90A4AE; stroke-width: 1.3; stroke-dasharray: 4 2; }
       .forecast-tick  { font-size: 9px; fill: var(--csc-text-2); }
       .forecast-meta {
         font-size: 0.74rem; color: var(--csc-text-2);
@@ -1117,6 +1206,7 @@ class CumulusSolaireCardEditor extends HTMLElement {
     return [
       { name: 'entity', required: true, selector: sensor },
       { name: 'forecast_entity', selector: sensor },
+      { name: 'forecast_entity_tomorrow', selector: sensor },
       {
         name: 'show_settings',
         selector: {
@@ -1142,10 +1232,11 @@ class CumulusSolaireCardEditor extends HTMLElement {
 
   _label(schema) {
     const labels = {
-      entity:           'Entité cumulus',
-      forecast_entity:  'Entité prévisions Solcast',
-      show_settings:    'Panneau de réglages',
-      controls_section: 'Contrôles',
+      entity:                   'Entité cumulus',
+      forecast_entity:          'Entité prévisions Solcast — aujourd\'hui',
+      forecast_entity_tomorrow: 'Entité prévisions Solcast — demain',
+      show_settings:            'Panneau de réglages',
+      controls_section:         'Contrôles',
     };
     if (labels[schema.name]) return labels[schema.name];
     if (schema.name && schema.name.startsWith('ctrl_')) {
@@ -1157,6 +1248,7 @@ class CumulusSolaireCardEditor extends HTMLElement {
   _helper(schema) {
     if (schema.name === 'entity') return 'sensor.cumulus_automation ou équivalent';
     if (schema.name === 'forecast_entity') return 'Prévisions Solcast pour aujourd\'hui';
+    if (schema.name === 'forecast_entity_tomorrow') return 'Optionnel — affiche la courbe de demain';
     if (schema.name && schema.name.startsWith('ctrl_')) {
       const def = DEFAULT_CONTROLS[schema.name.slice(5)];
       return def ? `Défaut : ${def.entity} — vide pour masquer` : undefined;
@@ -1168,6 +1260,7 @@ class CumulusSolaireCardEditor extends HTMLElement {
     const data = {
       entity: cfg.entity || '',
       forecast_entity: cfg.forecast_entity || '',
+      forecast_entity_tomorrow: cfg.forecast_entity_tomorrow || '',
       show_settings: cfg.show_settings === false
         ? 'hidden'
         : (cfg.show_settings || 'collapsible'),
@@ -1190,6 +1283,8 @@ class CumulusSolaireCardEditor extends HTMLElement {
     cfg.entity = data.entity || '';
     if (data.forecast_entity) cfg.forecast_entity = data.forecast_entity;
     else delete cfg.forecast_entity;
+    if (data.forecast_entity_tomorrow) cfg.forecast_entity_tomorrow = data.forecast_entity_tomorrow;
+    else delete cfg.forecast_entity_tomorrow;
 
     if (data.show_settings === 'hidden') {
       cfg.show_settings = false;
