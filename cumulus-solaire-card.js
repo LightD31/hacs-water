@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -120,7 +120,6 @@ class CumulusSolaireCard extends HTMLElement {
             <div class="hero-title" id="heroTitle">—</div>
             <div class="hero-reason" id="heroReason">—</div>
           </div>
-          <div class="hero-time" id="heroTime">--:--</div>
         </div>
 
         <div class="main">
@@ -145,7 +144,10 @@ class CumulusSolaireCard extends HTMLElement {
           <div class="forecast">
             <div class="forecast-title">
               <span>Production solaire — aujourd'hui</span>
-              <span class="forecast-stale" id="forecastStale"></span>
+              <span class="forecast-title-right">
+                <span class="forecast-max" id="forecastMax"></span>
+                <span class="forecast-stale" id="forecastStale"></span>
+              </span>
             </div>
             <svg id="forecastSvg" viewBox="0 0 400 110" preserveAspectRatio="none">
               <defs>
@@ -167,6 +169,7 @@ class CumulusSolaireCard extends HTMLElement {
             </svg>
             <div class="forecast-title forecast-title-tomorrow" id="forecastTomorrowTitle" style="display:none">
               <span>Demain</span>
+              <span class="forecast-max" id="forecastTomorrowMax"></span>
             </div>
             <svg id="forecastTomorrowSvg" viewBox="0 0 400 80" preserveAspectRatio="none" style="display:none">
               <path id="forecastTomorrowBand"></path>
@@ -201,7 +204,6 @@ class CumulusSolaireCard extends HTMLElement {
       heroIconEl:   this.shadowRoot.querySelector('#heroIconEl'),
       heroTitle:    this.shadowRoot.querySelector('#heroTitle'),
       heroReason:   this.shadowRoot.querySelector('#heroReason'),
-      heroTime:     this.shadowRoot.querySelector('#heroTime'),
       dialBg:       this.shadowRoot.querySelector('#dialBg'),
       dialFill:     this.shadowRoot.querySelector('#dialFill'),
       dialTicks:    this.shadowRoot.querySelector('#dialTicks'),
@@ -215,7 +217,9 @@ class CumulusSolaireCard extends HTMLElement {
       forecastTicks:  this.shadowRoot.querySelector('#forecastTicks'),
       forecastMeta:   this.shadowRoot.querySelector('#forecastMeta'),
       forecastStale:  this.shadowRoot.querySelector('#forecastStale'),
+      forecastMax:    this.shadowRoot.querySelector('#forecastMax'),
       forecastTomorrowTitle: this.shadowRoot.querySelector('#forecastTomorrowTitle'),
+      forecastTomorrowMax:   this.shadowRoot.querySelector('#forecastTomorrowMax'),
       forecastTomorrowSvg:   this.shadowRoot.querySelector('#forecastTomorrowSvg'),
       forecastTomorrowBand:  this.shadowRoot.querySelector('#forecastTomorrowBand'),
       forecastTomorrowArea:  this.shadowRoot.querySelector('#forecastTomorrowArea'),
@@ -371,11 +375,6 @@ class CumulusSolaireCard extends HTMLElement {
     this._el.heroTitle.textContent = so.state || m.title;
     this._el.heroReason.textContent = a.reason || '';
 
-    const now = new Date();
-    this._el.heroTime.textContent =
-      String(now.getHours()).padStart(2, '0') + ':' +
-      String(now.getMinutes()).padStart(2, '0');
-
     this._renderDial(a);
     this._renderForecast(a);
     this._renderForecastTomorrow(a);
@@ -497,10 +496,11 @@ class CumulusSolaireCard extends HTMLElement {
       .filter(p => !isNaN(p.t) && p.t >= dayStart.getTime() && p.t < dayEndMs)
       .sort((p1, p2) => p1.t - p2.t);
 
-    const maxW = Math.max(
-      0.5,
+    const dataMax = Math.max(
+      0,
       ...points.map(p => Math.max(p.w, p.p90 != null ? p.p90 : 0)),
     );
+    const maxW = Math.max(0.5, dataMax);
     const wToY = (w) => padTop + usableH - (w / maxW) * usableH;
 
     const screenPts = points.map(p => ({ x: tToX(p.t), y: wToY(p.w) }));
@@ -517,6 +517,8 @@ class CumulusSolaireCard extends HTMLElement {
     } else {
       this._el.forecastBand.setAttribute('d', '');
     }
+
+    this._el.forecastMax.textContent = dataMax > 0.05 ? `max ${this._fmtKw(dataMax)}` : '';
 
     if (linePath) {
       this._el.forecastLine.setAttribute('d', linePath);
@@ -677,10 +679,11 @@ class CumulusSolaireCard extends HTMLElement {
     this._el.forecastTomorrowTitle.style.display = '';
     this._el.forecastTomorrowSvg.style.display = '';
 
-    const maxW = Math.max(
-      0.5,
+    const dataMax = Math.max(
+      0,
       ...points.map(p => Math.max(p.w, p.p90 != null ? p.p90 : 0)),
     );
+    const maxW = Math.max(0.5, dataMax);
     const wToY = (w) => padTop + usableH - (w / maxW) * usableH;
     const screenPts = points.map(p => ({ x: tToX(p.t), y: wToY(p.w) }));
     const linePath = this._smoothPath(screenPts);
@@ -696,6 +699,8 @@ class CumulusSolaireCard extends HTMLElement {
     } else {
       this._el.forecastTomorrowBand.setAttribute('d', '');
     }
+
+    this._el.forecastTomorrowMax.textContent = dataMax > 0.05 ? `max ${this._fmtKw(dataMax)}` : '';
 
     if (linePath) {
       this._el.forecastTomorrowLine.setAttribute('d', linePath);
@@ -889,6 +894,10 @@ class CumulusSolaireCard extends HTMLElement {
     return String(s).replace(/[&<>"']/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]));
   }
 
+  _fmtKw(kw) {
+    return kw >= 1 ? `${kw.toFixed(1)} kW` : `${Math.round(kw * 1000)} W`;
+  }
+
   // ---------- CSS ----------
 
   _css() {
@@ -931,7 +940,7 @@ class CumulusSolaireCard extends HTMLElement {
       /* Hero */
       .hero {
         display: grid;
-        grid-template-columns: 56px 1fr auto;
+        grid-template-columns: 56px 1fr;
         gap: 14px;
         align-items: center;
         padding: 14px 18px 6px 18px;
@@ -971,12 +980,6 @@ class CumulusSolaireCard extends HTMLElement {
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      .hero-time {
-        font-variant-numeric: tabular-nums;
-        font-size: 0.95rem;
-        color: var(--csc-text-2);
-        font-weight: 500;
-      }
 
       /* Main */
       .main {
@@ -1004,6 +1007,18 @@ class CumulusSolaireCard extends HTMLElement {
         display: flex; justify-content: space-between; align-items: baseline;
         font-size: 0.72rem; color: var(--csc-text-2);
         text-transform: uppercase; letter-spacing: 0.06em;
+      }
+      .forecast-title-right {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .forecast-max {
+        color: var(--csc-text-2);
+        font-weight: 600;
+        text-transform: none;
+        letter-spacing: 0;
+        font-variant-numeric: tabular-nums;
       }
       .forecast-stale { color: #e53935; font-weight: 600; }
       .forecast svg { width: 100%; height: 110px; overflow: visible; }
@@ -1269,11 +1284,18 @@ class CumulusSolaireCardEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._ensureBuilt();
-    if (this._form) this._form.hass = hass;
+    if (this._form) {
+      this._form.hass = hass;
+      this._syncForm();
+    }
   }
 
   _ensureBuilt() {
     if (this._form) return;
+    // Wait for BOTH hass and config so ha-form can resolve entity selectors;
+    // building too early causes ha-form to fire spurious value-changed with
+    // empty entity fields once hass arrives, which wipes the user's controls.
+    if (!this._hass || !this._config) return;
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
     this.shadowRoot.innerHTML = `
       <style>
@@ -1409,6 +1431,9 @@ class CumulusSolaireCardEditor extends HTMLElement {
       cfg.show_settings = data.show_settings;
     }
 
+    // Save controls verbatim. Don't silently drop entries that match the
+    // current defaults — if defaults change in a future version, a user who
+    // had explicitly selected the old default would lose their choice.
     const controls = {};
     let hasOverride = false;
     for (const key of CONTROL_ORDER) {
@@ -1420,7 +1445,7 @@ class CumulusSolaireCardEditor extends HTMLElement {
       } else if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
         controls[key] = { ...existing, entity: entityId };
         hasOverride = true;
-      } else if (entityId !== DEFAULT_CONTROLS[key].entity) {
+      } else {
         controls[key] = entityId;
         hasOverride = true;
       }
@@ -1438,9 +1463,15 @@ class CumulusSolaireCardEditor extends HTMLElement {
     if (json === this._lastDataJson) return;
     this._lastDataJson = json;
     this._form.data = data;
+    // Mark initialized only once we've actually pushed user data into ha-form.
+    // Any value-changed event fired BEFORE this point is a framework artefact
+    // (e.g. selectors populating when hass arrives) and must not overwrite
+    // the user's saved config.
+    this._syncedOnce = true;
   }
 
   _onFormChanged(e) {
+    if (!this._syncedOnce) return;
     const data = e.detail.value;
     this._lastDataJson = JSON.stringify(data);
     const newConfig = this._dataToConfig(data);
