@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -1046,10 +1046,6 @@ class CumulusSolaireCard extends HTMLElement {
   }
 }
 
-// ============================================================
-// Visual editor
-// ============================================================
-
 const CONTROL_LABELS = {
   enabled:         'Automatisation (interrupteur)',
   target:          'Température cible',
@@ -1061,273 +1057,184 @@ const CONTROL_LABELS = {
 
 class CumulusSolaireCardEditor extends HTMLElement {
   setConfig(config) {
-    const next = JSON.parse(JSON.stringify(config || {}));
-    if (!next.controls || typeof next.controls !== 'object') next.controls = {};
-    const json = JSON.stringify(next);
-    if (this._configJson === json) return;
-    this._configJson = json;
-    this._config = next;
-    this._render();
+    this._config = JSON.parse(JSON.stringify(config || {}));
+    this._ensureBuilt();
+    this._syncForm();
   }
 
   set hass(hass) {
-    const first = !this._hass;
     this._hass = hass;
-    if (first) {
-      this._render();
-    } else if (this.shadowRoot) {
-      this.shadowRoot.querySelectorAll('ha-entity-picker').forEach(el => { el.hass = hass; });
-    }
+    this._ensureBuilt();
+    if (this._form) this._form.hass = hass;
   }
 
-  _emit() {
-    this._configJson = JSON.stringify(this._config);
+  _ensureBuilt() {
+    if (this._form) return;
+    if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; }
+        ha-form { display: block; }
+        .hint {
+          margin: 0 0 10px 0;
+          font-size: 0.78rem;
+          color: var(--secondary-text-color);
+          line-height: 1.4;
+        }
+        .hint code {
+          background: var(--divider-color, rgba(127,127,127,0.18));
+          padding: 1px 4px;
+          border-radius: 3px;
+          font-size: 0.9em;
+        }
+      </style>
+      <p class="hint">
+        Le min/max/pas des sliders sont lus automatiquement depuis chaque
+        <code>input_number</code>. Laissez un champ contrôle vide pour masquer ce réglage.
+      </p>
+    `;
+    this._form = document.createElement('ha-form');
+    this._form.addEventListener('value-changed', (e) => this._onFormChanged(e));
+    this._form.computeLabel = (s) => this._label(s);
+    this._form.computeHelper = (s) => this._helper(s);
+    this.shadowRoot.appendChild(this._form);
+    if (this._hass) this._form.hass = this._hass;
+    this._form.schema = this._schema();
+  }
+
+  _schema() {
+    const sensor = { entity: { filter: { domain: 'sensor' } } };
+    const controlField = (key) => {
+      const def = DEFAULT_CONTROLS[key];
+      const domain = def.type === 'toggle'
+        ? ['input_boolean', 'switch']
+        : ['input_number', 'number'];
+      return {
+        name: `ctrl_${key}`,
+        selector: { entity: { filter: { domain } } },
+      };
+    };
+    return [
+      { name: 'entity', required: true, selector: sensor },
+      { name: 'forecast_entity', selector: sensor },
+      {
+        name: 'show_settings',
+        selector: {
+          select: {
+            mode: 'dropdown',
+            options: [
+              { value: 'collapsible', label: 'Repliable (défaut)' },
+              { value: 'expanded',    label: 'Toujours déplié' },
+              { value: 'hidden',      label: 'Masqué' },
+            ],
+          },
+        },
+      },
+      {
+        name: 'controls_section',
+        type: 'expandable',
+        title: 'Contrôles',
+        expanded: true,
+        schema: CONTROL_ORDER.map(controlField),
+      },
+    ];
+  }
+
+  _label(schema) {
+    const labels = {
+      entity:           'Entité cumulus',
+      forecast_entity:  'Entité prévisions Solcast',
+      show_settings:    'Panneau de réglages',
+      controls_section: 'Contrôles',
+    };
+    if (labels[schema.name]) return labels[schema.name];
+    if (schema.name && schema.name.startsWith('ctrl_')) {
+      return CONTROL_LABELS[schema.name.slice(5)] || schema.name;
+    }
+    return undefined;
+  }
+
+  _helper(schema) {
+    if (schema.name === 'entity') return 'sensor.cumulus_automation ou équivalent';
+    if (schema.name === 'forecast_entity') return 'Prévisions Solcast pour aujourd\'hui';
+    if (schema.name && schema.name.startsWith('ctrl_')) {
+      const def = DEFAULT_CONTROLS[schema.name.slice(5)];
+      return def ? `Défaut : ${def.entity} — vide pour masquer` : undefined;
+    }
+    return undefined;
+  }
+
+  _configToData(cfg) {
+    const data = {
+      entity: cfg.entity || '',
+      forecast_entity: cfg.forecast_entity || '',
+      show_settings: cfg.show_settings === false
+        ? 'hidden'
+        : (cfg.show_settings || 'collapsible'),
+    };
+    const userControls = cfg.controls || {};
+    for (const key of CONTROL_ORDER) {
+      const u = userControls[key];
+      let entityId;
+      if (u === false || u === null) entityId = '';
+      else if (typeof u === 'string') entityId = u;
+      else if (u && typeof u === 'object' && u.entity) entityId = u.entity;
+      else entityId = DEFAULT_CONTROLS[key].entity;
+      data[`ctrl_${key}`] = entityId;
+    }
+    return data;
+  }
+
+  _dataToConfig(data) {
+    const cfg = { entity: data.entity || '' };
+    if (data.forecast_entity) cfg.forecast_entity = data.forecast_entity;
+
+    if (data.show_settings === 'hidden') {
+      cfg.show_settings = false;
+    } else if (data.show_settings && data.show_settings !== 'collapsible') {
+      cfg.show_settings = data.show_settings;
+    }
+
+    const controls = {};
+    let hasOverride = false;
+    for (const key of CONTROL_ORDER) {
+      const entityId = data[`ctrl_${key}`] || '';
+      const existing = this._config.controls?.[key];
+      if (!entityId) {
+        controls[key] = false;
+        hasOverride = true;
+      } else if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+        controls[key] = { ...existing, entity: entityId };
+        hasOverride = true;
+      } else if (entityId !== DEFAULT_CONTROLS[key].entity) {
+        controls[key] = entityId;
+        hasOverride = true;
+      }
+    }
+    if (hasOverride) cfg.controls = controls;
+
+    return cfg;
+  }
+
+  _syncForm() {
+    if (!this._form || !this._config) return;
+    const data = this._configToData(this._config);
+    const json = JSON.stringify(data);
+    if (json === this._lastDataJson) return;
+    this._lastDataJson = json;
+    this._form.data = data;
+  }
+
+  _onFormChanged(e) {
+    const data = e.detail.value;
+    this._lastDataJson = JSON.stringify(data);
+    const newConfig = this._dataToConfig(data);
+    this._config = newConfig;
     this.dispatchEvent(new CustomEvent('config-changed', {
-      detail: { config: this._config },
+      detail: { config: newConfig },
       bubbles: true,
       composed: true,
     }));
-  }
-
-  _domainsFor(type) {
-    return type === 'toggle' ? ['input_boolean', 'switch'] : ['input_number', 'number'];
-  }
-
-  _getControlEntity(key) {
-    const def = DEFAULT_CONTROLS[key];
-    const u = this._config.controls[key];
-    if (u === false || u === null) return '';
-    if (typeof u === 'string') return u;
-    if (u && typeof u === 'object' && u.entity) return u.entity;
-    return def.entity;
-  }
-
-  _isControlEnabled(key) {
-    const u = this._config.controls[key];
-    return u !== false && u !== null;
-  }
-
-  _setControlEntity(key, entityId) {
-    if (!entityId) {
-      this._config.controls[key] = false;
-    } else {
-      const existing = this._config.controls[key];
-      if (existing && typeof existing === 'object') {
-        this._config.controls[key] = { ...existing, entity: entityId };
-      } else if (entityId === DEFAULT_CONTROLS[key].entity) {
-        delete this._config.controls[key];
-      } else {
-        this._config.controls[key] = entityId;
-      }
-    }
-    this._emit();
-  }
-
-  _setControlEnabled(key, enabled) {
-    if (enabled) {
-      const entity = this._getControlEntity(key) || DEFAULT_CONTROLS[key].entity;
-      if (entity === DEFAULT_CONTROLS[key].entity) {
-        delete this._config.controls[key];
-      } else {
-        this._config.controls[key] = entity;
-      }
-    } else {
-      this._config.controls[key] = false;
-    }
-    this._emit();
-  }
-
-  _render() {
-    if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
-    if (!this._config) return;
-
-    const cfg = this._config;
-    const showVal = cfg.show_settings === false ? 'false'
-                  : (cfg.show_settings === undefined ? 'collapsible' : cfg.show_settings);
-
-    this.shadowRoot.innerHTML = `
-      <style>${this._css()}</style>
-      <div class="form">
-        <section>
-          <h3>Entités principales</h3>
-          <div class="field"><ha-entity-picker id="mainEntity" label="Entité cumulus (sensor.cumulus_automation)"></ha-entity-picker></div>
-          <div class="field"><ha-entity-picker id="forecastEntity" label="Entité prévisions Solcast"></ha-entity-picker></div>
-        </section>
-
-        <section>
-          <h3>Panneau de réglages</h3>
-          <label class="field">
-            <span>Affichage</span>
-            <select id="showSettings">
-              <option value="collapsible">Repliable (défaut)</option>
-              <option value="expanded">Toujours déplié</option>
-              <option value="false">Masqué</option>
-            </select>
-          </label>
-        </section>
-
-        <section>
-          <h3>Contrôles</h3>
-          <p class="hint">Décochez pour masquer un contrôle. Le min/max/pas du slider sont lus automatiquement depuis l'<code>input_number</code>.</p>
-          <div id="controls"></div>
-        </section>
-      </div>
-    `;
-
-    // Main entity
-    const mainEl = this.shadowRoot.querySelector('#mainEntity');
-    mainEl.hass = this._hass;
-    mainEl.includeDomains = ['sensor'];
-    mainEl.allowCustomEntity = true;
-    mainEl.value = cfg.entity || '';
-    mainEl.addEventListener('value-changed', (e) => {
-      this._config.entity = e.detail.value || '';
-      this._emit();
-    });
-
-    // Forecast entity
-    const fcEl = this.shadowRoot.querySelector('#forecastEntity');
-    fcEl.hass = this._hass;
-    fcEl.includeDomains = ['sensor'];
-    fcEl.allowCustomEntity = true;
-    fcEl.value = cfg.forecast_entity || '';
-    fcEl.addEventListener('value-changed', (e) => {
-      const v = e.detail.value || '';
-      if (v) this._config.forecast_entity = v;
-      else delete this._config.forecast_entity;
-      this._emit();
-    });
-
-    // show_settings select
-    const showEl = this.shadowRoot.querySelector('#showSettings');
-    showEl.value = showVal;
-    showEl.addEventListener('change', () => {
-      const v = showEl.value;
-      this._config.show_settings = (v === 'false') ? false : v;
-      this._emit();
-    });
-
-    // Controls
-    const ctrlContainer = this.shadowRoot.querySelector('#controls');
-    for (const key of CONTROL_ORDER) {
-      const def = DEFAULT_CONTROLS[key];
-      const enabled = this._isControlEnabled(key);
-      const entity = this._getControlEntity(key);
-
-      const row = document.createElement('div');
-      row.className = 'ctrl-row';
-      row.innerHTML = `
-        <label class="ctrl-head">
-          <input type="checkbox" data-key="${key}" ${enabled ? 'checked' : ''}>
-          <span class="ctrl-title">${CONTROL_LABELS[key] || key}</span>
-          <span class="ctrl-type">${def.type === 'toggle' ? 'interrupteur' : 'slider'}</span>
-        </label>
-        <ha-entity-picker class="ctrl-picker" data-key="${key}"></ha-entity-picker>
-      `;
-      ctrlContainer.appendChild(row);
-
-      const picker = row.querySelector('ha-entity-picker');
-      picker.hass = this._hass;
-      picker.includeDomains = this._domainsFor(def.type);
-      picker.allowCustomEntity = true;
-      picker.label = `Entité (défaut: ${def.entity})`;
-      picker.value = entity;
-      picker.disabled = !enabled;
-      picker.addEventListener('value-changed', (e) => {
-        this._setControlEntity(key, e.detail.value || '');
-      });
-
-      const chk = row.querySelector('input[type="checkbox"]');
-      chk.addEventListener('change', () => {
-        this._setControlEnabled(key, chk.checked);
-        picker.disabled = !chk.checked;
-        if (chk.checked && !picker.value) picker.value = def.entity;
-      });
-    }
-  }
-
-  _css() {
-    return `
-      :host { display: block; }
-      .form { display: flex; flex-direction: column; gap: 16px; padding: 8px 0; }
-      section { display: flex; flex-direction: column; gap: 10px; }
-      h3 {
-        margin: 0;
-        font-size: 0.8rem;
-        color: var(--secondary-text-color);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        font-weight: 600;
-      }
-      .hint {
-        margin: 0;
-        font-size: 0.78rem;
-        color: var(--secondary-text-color);
-        line-height: 1.4;
-      }
-      .hint code {
-        background: var(--divider-color, rgba(127,127,127,0.18));
-        padding: 1px 4px;
-        border-radius: 3px;
-        font-size: 0.9em;
-      }
-      .field { display: flex; flex-direction: column; gap: 4px; }
-      .field > span {
-        font-size: 0.78rem;
-        color: var(--secondary-text-color);
-        font-weight: 500;
-      }
-      select {
-        padding: 10px 12px;
-        border: 1px solid var(--divider-color);
-        border-radius: 4px;
-        background: var(--card-background-color, var(--primary-background-color));
-        color: var(--primary-text-color);
-        font-size: 0.95rem;
-        font-family: inherit;
-      }
-      .ctrl-row {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding: 10px 0;
-        border-top: 1px solid var(--divider-color);
-      }
-      .ctrl-row:first-child { border-top: none; padding-top: 4px; }
-      .ctrl-head {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        cursor: pointer;
-        user-select: none;
-      }
-      .ctrl-head input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
-        margin: 0;
-        accent-color: var(--primary-color);
-        cursor: pointer;
-      }
-      .ctrl-title {
-        font-size: 0.95rem;
-        color: var(--primary-text-color);
-        font-weight: 500;
-        flex: 1;
-      }
-      .ctrl-type {
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--secondary-text-color);
-        padding: 2px 6px;
-        border: 1px solid var(--divider-color);
-        border-radius: 10px;
-      }
-      ha-entity-picker[disabled] {
-        opacity: 0.45;
-        pointer-events: none;
-      }
-    `;
   }
 }
 
