@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -762,12 +762,34 @@ class CumulusSolaireCard extends HTMLElement {
         value: `${fmtRound(a.solar_power)} W`,
         label: 'Production',
       },
-      {
-        icon: a.anti_injection_active ? 'mdi:transmission-tower-export' : 'mdi:transmission-tower',
-        color: a.anti_injection_active ? '#43a047' : '#9e9e9e',
-        value: `${fmtSigned(a.potential_surplus)} W`,
-        label: a.anti_injection_active ? 'Anti-injection' : 'Surplus',
-      },
+      (() => {
+        const ps = Number(a.potential_surplus);
+        const hasPs = ps != null && !isNaN(ps);
+        let icon, color, label;
+        if (a.anti_injection_active) {
+          icon = 'mdi:transmission-tower-export';
+          color = '#43a047';
+          label = 'Anti-injection';
+        } else if (hasPs && ps > 20) {
+          icon = 'mdi:transmission-tower-export';
+          color = '#fb8c00';
+          label = 'Surplus';
+        } else if (hasPs && ps < -20) {
+          icon = 'mdi:transmission-tower-import';
+          color = '#e53935';
+          label = 'Import';
+        } else {
+          icon = 'mdi:transmission-tower';
+          color = '#9e9e9e';
+          label = 'Surplus';
+        }
+        return {
+          icon,
+          color,
+          value: `${fmtSigned(a.potential_surplus)} W`,
+          label,
+        };
+      })(),
       {
         icon: a.legionella_critical ? 'mdi:bacteria'
             : a.legionella_due      ? 'mdi:bacteria-outline'
