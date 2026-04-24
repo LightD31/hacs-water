@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.9.0';
+const VERSION = '1.9.1';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -259,16 +259,6 @@ class CumulusSolaireCard extends HTMLElement {
       });
     });
 
-    // Score badge toggle (delegation — meta is rebuilt on each render)
-    this._scoreBadgeExpanded = false;
-    this._el.forecastMeta.addEventListener('click', (e) => {
-      const tgt = e.target.closest('[data-act="score-toggle"]');
-      if (!tgt) return;
-      e.stopPropagation();
-      this._scoreBadgeExpanded = !this._scoreBadgeExpanded;
-      this._render();
-    });
-
     // Strategy strip: info toggles detail, clicks inside strip don't bubble to more-info
     this._strategyExpanded = false;
     this._el.strategy.addEventListener('click', (e) => e.stopPropagation());
@@ -464,13 +454,13 @@ class CumulusSolaireCard extends HTMLElement {
       let tone = 'neutral';
       const delta = Math.round((target - reach) * 10) / 10;
       if (delta > 0.1) {
-        sub = `↓ −${delta.toFixed(1)}°C (demain compense)`;
+        sub = `↓ −${delta.toFixed(1)}°C report`;
         tone = 'down';
       } else if (reach - target > 0.1) {
-        sub = `↑ +${(reach - target).toFixed(1)}°C (legionella)`;
+        sub = `↑ +${(reach - target).toFixed(1)}°C legio`;
         tone = 'up';
       } else if (borrow != null && borrow > 0.5) {
-        sub = `demain peut couvrir −${Number(borrow).toFixed(1)}°C`;
+        sub = `−${Number(borrow).toFixed(1)}°C possibles`;
       }
       pills.push({
         icon: 'mdi:thermometer-check',
@@ -513,20 +503,18 @@ class CumulusSolaireCard extends HTMLElement {
       const fmt = (d) => `${String(d.getHours()).padStart(2,'0')}h${String(d.getMinutes()).padStart(2,'0')}`;
       winValue = `${fmt(ws)}–${fmt(we)}`;
       if (a.is_forcing === true) {
-        winSub = 'forçage actif';
+        winSub = 'forçage';
         winTone = 'active';
         winIcon = 'mdi:flash';
       } else if (a.in_window === true) {
         winSub = 'en cours';
         winTone = 'active';
       } else {
-        winSub = a.window_avg_w ? `~${Math.round(a.window_avg_w)} W` : 'planifiée';
+        winSub = a.window_avg_w ? `~${Math.round(a.window_avg_w)} W` : 'à venir';
       }
     } else if (a.window_skipped_reason) {
       winValue = 'hors fenêtre';
-      winSub = String(a.window_skipped_reason).length > 28
-        ? String(a.window_skipped_reason).slice(0, 26) + '…'
-        : a.window_skipped_reason;
+      winSub = a.window_skipped_reason;
     }
     pills.push({
       icon: winIcon,
@@ -753,43 +741,21 @@ class CumulusSolaireCard extends HTMLElement {
     }
 
     const parts = [];
-    if (a.window_start && a.window_end && a.duration_minutes > 0) {
-      const ws = new Date(a.window_start);
-      const we = new Date(a.window_end);
-      const fmt = (d) => `${String(d.getHours()).padStart(2,'0')}h${String(d.getMinutes()).padStart(2,'0')}`;
-      const avg = a.window_avg_w ? ` · ${Math.round(a.window_avg_w)} W` : '';
-      const min = a.window_min_avg_w ? ` (min ${Math.round(a.window_min_avg_w)} W)` : '';
-      parts.push(`<span class="badge"><span class="swatch win"></span> Fenêtre ${fmt(ws)}–${fmt(we)}${avg}${min}</span>`);
-    } else if (a.window_skipped_reason) {
-      parts.push(`<span>${this._escape(a.window_skipped_reason)}</span>`);
-    }
     if (a.today_remaining_kwh != null && a.today_remaining_kwh > 0) {
       parts.push(`<span>Reste ${Number(a.today_remaining_kwh).toFixed(1)} kWh</span>`);
     }
-    if (a.tomorrow_forecast_kwh != null || a.tomorrow_mode) {
-      const labels = {
-        poor: 'production faible',
-        good: 'production élevée',
-        mixed: 'production moyenne',
-        legionella: 'cycle Legionella',
-      };
-      const lbl = labels[a.tomorrow_mode] || a.tomorrow_mode || '';
+    if (a.tomorrow_forecast_kwh != null) {
       const kwh = a.tomorrow_forecast_kwh;
       const p10 = a.tomorrow_p10_kwh;
       const p90 = a.tomorrow_p90_kwh;
-      let txt = 'Demain';
-      if (kwh != null) txt += ` : ${Number(kwh).toFixed(1)} kWh`;
+      let txt = `Demain : ${Number(kwh).toFixed(1)} kWh`;
       if (p10 != null && p90 != null && p90 > p10) {
         txt += ` (${Number(p10).toFixed(1)}–${Number(p90).toFixed(1)})`;
       }
-      if (lbl) txt += ` · ${lbl}`;
       parts.push(`<span>${this._escape(txt)}</span>`);
     }
     if (a.day_after_forecast_kwh != null) {
       parts.push(`<span>J+2 : ${Number(a.day_after_forecast_kwh).toFixed(1)} kWh</span>`);
-    }
-    if (a.forecast_uncertainty != null && a.forecast_uncertainty >= 0.5) {
-      parts.push(`<span title="Écart p10/p90 élevé">Prévision incertaine</span>`);
     }
 
     this._el.forecastMeta.innerHTML = parts.join('');
@@ -1258,9 +1224,8 @@ class CumulusSolaireCard extends HTMLElement {
         font-size: 0.68rem;
         color: var(--csc-text-2);
         margin-top: 1px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        line-height: 1.2;
+        word-break: break-word;
       }
       .strategy-detail {
         display: none;
@@ -1328,7 +1293,9 @@ class CumulusSolaireCard extends HTMLElement {
         text-transform: none;
         letter-spacing: 0;
         font-variant-numeric: tabular-nums;
+        white-space: nowrap;
       }
+      .forecast-title > span:first-child { min-width: 0; }
       .forecast-stale { color: #e53935; font-weight: 600; }
       .forecast svg { width: 100%; height: 110px; overflow: visible; }
       #forecastWindow { fill: rgba(76,175,80,0.20); transition: opacity 0.4s ease; }
@@ -1345,25 +1312,6 @@ class CumulusSolaireCard extends HTMLElement {
       .forecast-meta {
         font-size: 0.74rem; color: var(--csc-text-2);
         display: flex; gap: 14px; flex-wrap: wrap; min-height: 1em;
-      }
-      .forecast-meta .badge { display: inline-flex; align-items: center; gap: 5px; }
-      .forecast-meta .swatch { width: 10px; height: 10px; border-radius: 2px; }
-      .forecast-meta .swatch.win { background: rgba(76,175,80,0.5); }
-      .forecast-meta .score-badge {
-        cursor: pointer;
-        padding: 2px 8px;
-        border-radius: 10px;
-        background: color-mix(in srgb, var(--csc-accent) 14%, transparent);
-        color: var(--csc-text);
-        transition: background 0.2s ease;
-        user-select: none;
-      }
-      .forecast-meta .score-badge:hover {
-        background: color-mix(in srgb, var(--csc-accent) 24%, transparent);
-      }
-      .forecast-meta .score-badge ha-icon { --mdc-icon-size: 14px; color: var(--csc-accent); }
-      @supports not (background: color-mix(in srgb, red, blue)) {
-        .forecast-meta .score-badge { background: var(--csc-divider); }
       }
 
       /* Chips */
