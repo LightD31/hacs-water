@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -122,6 +122,18 @@ class CumulusSolaireCard extends HTMLElement {
           </div>
         </div>
 
+        <div class="strategy" id="strategy">
+          <div class="strategy-why" id="strategyWhy">
+            <ha-icon id="strategyIcon" icon="mdi:strategy"></ha-icon>
+            <span id="strategyWhyText">—</span>
+            <button class="strategy-info" id="strategyInfo" title="Détails" aria-label="Détails">
+              <ha-icon icon="mdi:information-outline"></ha-icon>
+            </button>
+          </div>
+          <div class="strategy-pills" id="strategyPills"></div>
+          <div class="strategy-detail" id="strategyDetail"></div>
+        </div>
+
         <div class="main">
           <div class="dial">
             <svg id="dialSvg" viewBox="0 0 220 200" preserveAspectRatio="xMidYMid meet">
@@ -226,6 +238,12 @@ class CumulusSolaireCard extends HTMLElement {
       forecastTomorrowLine:  this.shadowRoot.querySelector('#forecastTomorrowLine'),
       forecastTomorrowTicks: this.shadowRoot.querySelector('#forecastTomorrowTicks'),
       chips:        this.shadowRoot.querySelector('#chips'),
+      strategy:         this.shadowRoot.querySelector('#strategy'),
+      strategyIcon:     this.shadowRoot.querySelector('#strategyIcon'),
+      strategyWhyText:  this.shadowRoot.querySelector('#strategyWhyText'),
+      strategyInfo:     this.shadowRoot.querySelector('#strategyInfo'),
+      strategyPills:    this.shadowRoot.querySelector('#strategyPills'),
+      strategyDetail:   this.shadowRoot.querySelector('#strategyDetail'),
       settings:     this.shadowRoot.querySelector('#settings'),
       settingsToggle: this.shadowRoot.querySelector('#settingsToggle'),
       settingsContent: this.shadowRoot.querySelector('#settingsContent'),
@@ -249,6 +267,15 @@ class CumulusSolaireCard extends HTMLElement {
       e.stopPropagation();
       this._scoreBadgeExpanded = !this._scoreBadgeExpanded;
       this._render();
+    });
+
+    // Strategy strip: info toggles detail, clicks inside strip don't bubble to more-info
+    this._strategyExpanded = false;
+    this._el.strategy.addEventListener('click', (e) => e.stopPropagation());
+    this._el.strategyInfo.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._strategyExpanded = !this._strategyExpanded;
+      this._el.strategy.classList.toggle('expanded', this._strategyExpanded);
     });
 
     // Settings panel: stop propagation so it doesn't trigger more-info
@@ -375,11 +402,165 @@ class CumulusSolaireCard extends HTMLElement {
     this._el.heroTitle.textContent = so.state || m.title;
     this._el.heroReason.textContent = a.reason || '';
 
+    this._renderStrategy(a);
     this._renderDial(a);
     this._renderForecast(a);
     this._renderForecastTomorrow(a);
     this._renderChips(a);
     this._renderSettings(a);
+  }
+
+  // ---------- Strategy strip ----------
+
+  _renderStrategy(a) {
+    const mode = a.tomorrow_mode;
+    const uncertain = a.forecast_uncertainty != null && a.forecast_uncertainty >= 0.5;
+
+    let icon = 'mdi:strategy';
+    let why = '';
+    let accentVar = null;
+
+    if (a.legionella_critical) {
+      icon = 'mdi:bacteria';
+      why = 'Cycle anti-légionelle critique — on force la chauffe';
+      accentVar = '#e53935';
+    } else if (a.legionella_due) {
+      icon = 'mdi:bacteria-outline';
+      why = 'Cycle anti-légionelle à programmer — cible remontée à 62°C';
+      accentVar = '#fb8c00';
+    } else if (mode === 'good') {
+      icon = 'mdi:weather-sunny';
+      why = 'Demain ensoleillé — on laisse la citerne tiédir, moins de seuil';
+      accentVar = '#43a047';
+    } else if (mode === 'poor') {
+      icon = 'mdi:weather-cloudy';
+      why = 'Demain faible — on conserve une marge thermique';
+      accentVar = '#1e88e5';
+    } else if (mode === 'mixed') {
+      icon = 'mdi:weather-partly-cloudy';
+      why = 'Demain moyen — chauffe prudente';
+      accentVar = '#fb8c00';
+    } else {
+      icon = 'mdi:strategy';
+      why = 'Stratégie standard';
+    }
+    if (uncertain) why += ' · prévision incertaine';
+
+    this._el.strategyIcon.setAttribute('icon', icon);
+    this._el.strategyWhyText.textContent = why;
+    if (accentVar) {
+      this._el.strategy.style.setProperty('--strat-accent', accentVar);
+    } else {
+      this._el.strategy.style.removeProperty('--strat-accent');
+    }
+
+    // --- Influence pills ---
+    const pills = [];
+    const reach = a.reach_for;
+    const target = a.target_temp;
+    const borrow = a.borrowable_deg;
+    if (reach != null && target != null) {
+      let sub = '= cible';
+      let tone = 'neutral';
+      const delta = Math.round((target - reach) * 10) / 10;
+      if (delta > 0.1) {
+        sub = `↓ −${delta.toFixed(1)}°C (demain compense)`;
+        tone = 'down';
+      } else if (reach - target > 0.1) {
+        sub = `↑ +${(reach - target).toFixed(1)}°C (legionella)`;
+        tone = 'up';
+      } else if (borrow != null && borrow > 0.5) {
+        sub = `demain peut couvrir −${Number(borrow).toFixed(1)}°C`;
+      }
+      pills.push({
+        icon: 'mdi:thermometer-check',
+        label: 'Cible',
+        value: `${Number(reach).toFixed(0)}°C`,
+        sub,
+        tone,
+      });
+    }
+
+    const eff = a.effective_trigger;
+    const base = a.solar_trigger;
+    const mult = a.trig_mult;
+    if (eff != null && base != null) {
+      let sub = '';
+      let tone = 'neutral';
+      if (mult != null && Math.abs(mult - 1) >= 0.02) {
+        const pct = Math.round((mult - 1) * 100);
+        sub = pct >= 0 ? `↑ +${pct}%` : `↓ ${pct}%`;
+        tone = pct >= 0 ? 'up' : 'down';
+      } else {
+        sub = 'standard';
+      }
+      pills.push({
+        icon: 'mdi:solar-power',
+        label: 'Seuil',
+        value: `${Math.round(eff)} W`,
+        sub,
+        tone,
+      });
+    }
+
+    let winIcon = 'mdi:clock-outline';
+    let winValue = '—';
+    let winSub = '';
+    let winTone = 'neutral';
+    if (a.window_start && a.window_end) {
+      const ws = new Date(a.window_start);
+      const we = new Date(a.window_end);
+      const fmt = (d) => `${String(d.getHours()).padStart(2,'0')}h${String(d.getMinutes()).padStart(2,'0')}`;
+      winValue = `${fmt(ws)}–${fmt(we)}`;
+      if (a.is_forcing === true) {
+        winSub = 'forçage actif';
+        winTone = 'active';
+        winIcon = 'mdi:flash';
+      } else if (a.in_window === true) {
+        winSub = 'en cours';
+        winTone = 'active';
+      } else {
+        winSub = a.window_avg_w ? `~${Math.round(a.window_avg_w)} W` : 'planifiée';
+      }
+    } else if (a.window_skipped_reason) {
+      winValue = 'hors fenêtre';
+      winSub = String(a.window_skipped_reason).length > 28
+        ? String(a.window_skipped_reason).slice(0, 26) + '…'
+        : a.window_skipped_reason;
+    }
+    pills.push({
+      icon: winIcon,
+      label: 'Fenêtre',
+      value: winValue,
+      sub: winSub,
+      tone: winTone,
+    });
+
+    this._el.strategyPills.innerHTML = pills.map(p => `
+      <div class="strat-pill tone-${p.tone}">
+        <ha-icon icon="${p.icon}"></ha-icon>
+        <div class="strat-pill-text">
+          <div class="strat-pill-l">${this._escape(p.label)}</div>
+          <div class="strat-pill-v">${this._escape(p.value)}</div>
+          ${p.sub ? `<div class="strat-pill-s">${this._escape(p.sub)}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+
+    // --- Detail (expandable) ---
+    const fmtPct = (v) => Math.round(Number(v) * 100) + '%';
+    const rows = [];
+    if (a.effective_score != null) rows.push(['Score effectif', fmtPct(a.effective_score)]);
+    if (a.tomorrow_score != null) rows.push(['Score demain', fmtPct(a.tomorrow_score)]);
+    if (a.worst_next2_score != null) rows.push(['Pire J+1/J+2', fmtPct(a.worst_next2_score)]);
+    if (a.tomorrow_weight != null) rows.push(['Poids demain', fmtPct(a.tomorrow_weight)]);
+    if (a.forecast_uncertainty != null) rows.push(['Incertitude', fmtPct(a.forecast_uncertainty)]);
+    if (a.borrowable_deg != null) rows.push(['Économie max grâce à demain', `${Number(a.borrowable_deg).toFixed(1)}°C`]);
+    if (a.floor_temp != null) rows.push(['Cible minimale (si météo parfaite)', `${Number(a.floor_temp).toFixed(1)}°C`]);
+    if (a.trig_mult != null) rows.push(['Multiplicateur seuil', `×${Number(a.trig_mult).toFixed(2)}`]);
+    this._el.strategyDetail.innerHTML = rows.map(([k, v]) =>
+      `<div class="strat-detail-row"><span>${this._escape(k)}</span><span>${this._escape(v)}</span></div>`
+    ).join('');
   }
 
   _mode(a) {
@@ -611,33 +792,7 @@ class CumulusSolaireCard extends HTMLElement {
       parts.push(`<span title="Écart p10/p90 élevé">Prévision incertaine</span>`);
     }
 
-    const scoreParts = [];
-    const fmtPct = (v) => Math.round(Number(v) * 100) + '%';
-    if (a.effective_score != null || a.tomorrow_score != null) {
-      const main = a.effective_score != null ? a.effective_score : a.tomorrow_score;
-      if (this._scoreBadgeExpanded) {
-        const sub = [];
-        if (a.tomorrow_score != null)       sub.push(`demain ${fmtPct(a.tomorrow_score)}`);
-        if (a.worst_next2_score != null)    sub.push(`pire J+1/J+2 ${fmtPct(a.worst_next2_score)}`);
-        if (a.tomorrow_weight != null)      sub.push(`poids ${fmtPct(a.tomorrow_weight)}`);
-        if (a.forecast_uncertainty != null) sub.push(`incert. ${fmtPct(a.forecast_uncertainty)}`);
-        scoreParts.push(
-          `<span class="badge score-badge expanded" data-act="score-toggle" title="Cliquer pour réduire">` +
-          `<ha-icon icon="mdi:chart-bell-curve-cumulative"></ha-icon>` +
-          `Score ${fmtPct(main)}${sub.length ? ' · ' + this._escape(sub.join(' · ')) : ''}` +
-          `</span>`
-        );
-      } else {
-        scoreParts.push(
-          `<span class="badge score-badge" data-act="score-toggle" title="Cliquer pour détailler">` +
-          `<ha-icon icon="mdi:chart-bell-curve-cumulative"></ha-icon>` +
-          `Score ${fmtPct(main)}` +
-          `</span>`
-        );
-      }
-    }
-
-    this._el.forecastMeta.innerHTML = [...parts, ...scoreParts].join('');
+    this._el.forecastMeta.innerHTML = parts.join('');
   }
 
   _renderForecastTomorrow(a) {
@@ -1001,6 +1156,138 @@ class CumulusSolaireCard extends HTMLElement {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      /* Strategy strip */
+      .strategy {
+        --strat-accent: var(--csc-accent);
+        padding: 2px 18px 10px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .strategy-why {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.82rem;
+        color: var(--csc-text);
+        padding: 6px 10px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--strat-accent) 12%, transparent);
+        border-left: 3px solid var(--strat-accent);
+      }
+      @supports not (background: color-mix(in srgb, red, blue)) {
+        .strategy-why { background: var(--csc-divider); }
+      }
+      .strategy-why ha-icon {
+        --mdc-icon-size: 18px;
+        color: var(--strat-accent);
+        flex-shrink: 0;
+      }
+      .strategy-why #strategyWhyText {
+        flex: 1;
+        min-width: 0;
+        line-height: 1.3;
+      }
+      .strategy-info {
+        all: unset;
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        cursor: pointer;
+        color: var(--csc-text-2);
+        transition: background 0.2s ease, color 0.2s ease;
+        flex-shrink: 0;
+      }
+      .strategy-info ha-icon { --mdc-icon-size: 16px; }
+      .strategy-info:hover {
+        background: color-mix(in srgb, var(--csc-text-2) 14%, transparent);
+        color: var(--csc-text);
+      }
+      .strategy.expanded .strategy-info {
+        color: var(--strat-accent);
+      }
+      .strategy-pills {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      @media (max-width: 520px) {
+        .strategy-pills { grid-template-columns: 1fr; }
+      }
+      .strat-pill {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--csc-text-2) 8%, transparent);
+        min-width: 0;
+      }
+      @supports not (background: color-mix(in srgb, red, blue)) {
+        .strat-pill { background: var(--csc-divider); }
+      }
+      .strat-pill ha-icon {
+        --mdc-icon-size: 18px;
+        color: var(--csc-text-2);
+      }
+      .strat-pill.tone-up    ha-icon { color: #fb8c00; }
+      .strat-pill.tone-down  ha-icon { color: #1e88e5; }
+      .strat-pill.tone-active ha-icon { color: var(--strat-accent); }
+      .strat-pill-text { min-width: 0; line-height: 1.15; }
+      .strat-pill-l {
+        font-size: 0.62rem;
+        color: var(--csc-text-2);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .strat-pill-v {
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: var(--csc-text);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .strat-pill-s {
+        font-size: 0.68rem;
+        color: var(--csc-text-2);
+        margin-top: 1px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .strategy-detail {
+        display: none;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 4px 14px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--csc-text-2) 6%, transparent);
+        font-size: 0.75rem;
+      }
+      @supports not (background: color-mix(in srgb, red, blue)) {
+        .strategy-detail { background: var(--csc-divider); }
+      }
+      @media (max-width: 520px) {
+        .strategy-detail { grid-template-columns: 1fr; }
+      }
+      .strategy.expanded .strategy-detail { display: grid; }
+      .strat-detail-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--csc-text-2);
+      }
+      .strat-detail-row span:last-child {
+        color: var(--csc-text);
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
       }
 
       /* Main */
