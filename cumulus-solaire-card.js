@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.9.1';
+const VERSION = '1.9.2';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -755,7 +755,13 @@ class CumulusSolaireCard extends HTMLElement {
       parts.push(`<span>${this._escape(txt)}</span>`);
     }
     if (a.day_after_forecast_kwh != null) {
-      parts.push(`<span>J+2 : ${Number(a.day_after_forecast_kwh).toFixed(1)} kWh</span>`);
+      const p10 = a.day_after_p10_kwh;
+      const p90 = a.day_after_p90_kwh;
+      let txt = `J+2 : ${Number(a.day_after_forecast_kwh).toFixed(1)} kWh`;
+      if (p10 != null && p90 != null && p90 > p10) {
+        txt += ` (${Number(p10).toFixed(1)}–${Number(p90).toFixed(1)})`;
+      }
+      parts.push(`<span>${this._escape(txt)}</span>`);
     }
 
     this._el.forecastMeta.innerHTML = parts.join('');
