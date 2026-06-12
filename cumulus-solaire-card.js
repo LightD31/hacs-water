@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.9.2';
+const VERSION = '1.10.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -24,8 +24,11 @@ console.info(
 
 const MODES = {
   'disabled':            { color: '#9e9e9e', icon: 'mdi:robot-off',                 title: 'Automatisation désactivée', active: false },
+  'manual-hold':         { color: '#8e24aa', icon: 'mdi:hand-back-right',           title: 'Pause — commande manuelle', active: false },
   'sensor-error':        { color: '#e53935', icon: 'mdi:thermometer-off',           title: 'Sonde HS — état maintenu',  active: false },
+  'legionella-blocked':  { color: '#e53935', icon: 'mdi:alert-octagon-outline',     title: 'Anti-légionelle impossible', active: false },
   'legionella-critical': { color: '#e53935', icon: 'mdi:bacteria',                  title: 'Cycle anti-Legionella',     active: true  },
+  'legionella-pending':  { color: '#fb8c00', icon: 'mdi:bacteria',                  title: 'Anti-légionelle en attente (HC)', active: false },
   'anti-injection':      { color: '#43a047', icon: 'mdi:transmission-tower-export', title: 'Charge le surplus solaire', active: true  },
   'legionella-due':      { color: '#fb8c00', icon: 'mdi:bacteria-outline',          title: 'Legionella à programmer',   active: false },
   'solcast-stale':       { color: '#757575', icon: 'mdi:cloud-off-outline',         title: 'Solcast périmé',            active: false },
@@ -37,15 +40,23 @@ const MODES = {
 
 const DEFAULT_CONTROLS = {
   enabled:         { entity: 'input_boolean.cumulus_automation_enabled', label: 'Automatisation',     type: 'toggle' },
-  target:          { entity: 'input_number.cumulus_target_temp',         label: 'Cible',              type: 'slider', icon: 'mdi:thermometer-check' },
-  min:             { entity: 'input_number.cumulus_min_temp',            label: 'Minimum',            type: 'slider', icon: 'mdi:thermometer-low' },
+  target:          { entity: 'input_number.cumulus_target_temp',         label: 'Cible',              type: 'slider', icon: 'mdi:thermometer-check',
+                     desc: "Température visée quand la météo de demain ne permet pas de report" },
+  min:             { entity: 'input_number.cumulus_min_temp',            label: 'Minimum',            type: 'slider', icon: 'mdi:thermometer-low',
+                     desc: "Plancher absolu — en dessous, forçage dans la meilleure fenêtre solaire" },
   solar_trigger:   { entity: 'input_number.cumulus_solar_trigger',       label: 'Seuil solaire',      type: 'slider', icon: 'mdi:solar-power',
-                     subtitleAttr: 'effective_trigger', subtitleLabel: 'effectif', subtitleUnit: 'W' },
-  surplus_trigger: { entity: 'input_number.cumulus_surplus_trigger',     label: 'Seuil anti-injection', type: 'slider', icon: 'mdi:transmission-tower-export' },
-  efficiency:      { entity: 'input_number.cumulus_efficiency',          label: 'Rendement',          type: 'slider', icon: 'mdi:percent-circle' },
+                     subtitleAttr: 'effective_trigger', subtitleLabel: 'effectif', subtitleUnit: 'W',
+                     desc: "Production mini pour chauffer en direct (modulé ±10 % par la météo de demain)" },
+  surplus_trigger: { entity: 'input_number.cumulus_surplus_trigger',     label: 'Seuil anti-injection', type: 'slider', icon: 'mdi:transmission-tower-export',
+                     desc: "Surplus exporté pendant ≥ 5 min qui force l'allumage" },
+  efficiency:      { entity: 'input_number.cumulus_efficiency',          label: 'Rendement',          type: 'slider', icon: 'mdi:percent-circle',
+                     desc: "Conversion électricité → chaleur utile (pertes incluses) — pilote durées et cible adaptative" },
+  tank:            { entity: 'input_number.cumulus_tank_volume',         label: 'Volume ballon',      type: 'slider', icon: 'mdi:water-boiler',
+                     optional: true,
+                     desc: "Capacité thermique du ballon — influence la cible adaptative et la durée de fenêtre" },
 };
 
-const CONTROL_ORDER = ['enabled', 'target', 'min', 'solar_trigger', 'surplus_trigger', 'efficiency'];
+const CONTROL_ORDER = ['enabled', 'target', 'min', 'solar_trigger', 'surplus_trigger', 'efficiency', 'tank'];
 
 class CumulusSolaireCard extends HTMLElement {
   static getStubConfig() {
@@ -335,6 +346,7 @@ class CumulusSolaireCard extends HTMLElement {
               <span class="setting-value-sub"  data-key="${key}-sub"></span>
             </div>
           </div>
+          ${ctrl.desc ? `<div class="setting-desc">${this._escape(ctrl.desc)}</div>` : ''}
           <input type="range" class="slider" data-key="${key}" min="0" max="100" step="1" value="0">
         `;
         container.appendChild(row);
@@ -390,7 +402,11 @@ class CumulusSolaireCard extends HTMLElement {
     // v5: so.state is the canonical human-readable mode label from the flow;
     // a.reason holds the detailed "why".
     this._el.heroTitle.textContent = so.state || m.title;
-    this._el.heroReason.textContent = a.reason || '';
+    let reason = a.reason || '';
+    if (a.degraded_sonde === true && a.sonde_down_hours > 0) {
+      reason += `${reason ? ' · ' : ''}sonde HS depuis ${a.sonde_down_hours} h`;
+    }
+    this._el.heroReason.textContent = reason;
 
     this._renderStrategy(a);
     this._renderDial(a);
@@ -410,10 +426,26 @@ class CumulusSolaireCard extends HTMLElement {
     let why = '';
     let accentVar = null;
 
-    if (a.legionella_critical) {
+    if (a.manual_hold_active) {
+      icon = 'mdi:hand-back-right';
+      why = 'Commande manuelle détectée — automatisation en pause';
+      accentVar = '#8e24aa';
+    } else if (a.legionella_blocked) {
+      icon = 'mdi:alert-octagon-outline';
+      why = 'Anti-légionelle impossible — le thermostat mécanique coupe avant 62°C';
+      accentVar = '#e53935';
+    } else if (a.degraded_sonde) {
+      icon = 'mdi:thermometer-off';
+      why = 'Sonde HS — mode dégradé (solaire / anti-injection uniquement)';
+      accentVar = '#e53935';
+    } else if (a.legionella_critical) {
       icon = 'mdi:bacteria';
       why = 'Cycle anti-légionelle critique — on force la chauffe';
       accentVar = '#e53935';
+    } else if (a.legionella_critical_pending) {
+      icon = 'mdi:bacteria';
+      why = 'Anti-légionelle critique — chauffe planifiée aux heures creuses';
+      accentVar = '#fb8c00';
     } else if (a.legionella_due) {
       icon = 'mdi:bacteria-outline';
       why = 'Cycle anti-légionelle à programmer — cible remontée à 62°C';
@@ -546,22 +578,107 @@ class CumulusSolaireCard extends HTMLElement {
     if (a.borrowable_deg != null) rows.push(['Économie max grâce à demain', `${Number(a.borrowable_deg).toFixed(1)}°C`]);
     if (a.floor_temp != null) rows.push(['Cible minimale (si météo parfaite)', `${Number(a.floor_temp).toFixed(1)}°C`]);
     if (a.trig_mult != null) rows.push(['Multiplicateur seuil', `×${Number(a.trig_mult).toFixed(2)}`]);
-    this._el.strategyDetail.innerHTML = rows.map(([k, v]) =>
+    if (a.stop_temp != null) rows.push(['Arrêt du forçage', `${Number(a.stop_temp).toFixed(1)}°C`]);
+    if (a.dt_forcing != null && a.dt_forcing > 0) rows.push(['Besoin forçage', `${Number(a.dt_forcing).toFixed(1)}°C`]);
+    if (a.tank_volume_l != null) rows.push(['Volume ballon', `${a.tank_volume_l} L`]);
+    if (a.sonde_down_hours != null && a.sonde_down_hours > 0) rows.push(['Sonde HS depuis', `${a.sonde_down_hours} h`]);
+    if (a.manual_hold_until) {
+      const t = new Date(a.manual_hold_until);
+      rows.push(['Reprise auto', `${String(t.getHours()).padStart(2,'0')}h${String(t.getMinutes()).padStart(2,'0')}`]);
+    }
+    const ladder = this._decisionLadder(a);
+    const ladderHtml = `
+      <div class="ladder">
+        <div class="ladder-title">Chemin de décision</div>
+        ${ladder.map(s => `
+          <div class="ladder-row st-${s.status}${s.warn ? ' warn' : ''}">
+            <ha-icon icon="${s.status === 'fired' ? 'mdi:arrow-right-bold-circle'
+                          : s.status === 'pass'  ? 'mdi:check'
+                                                 : 'mdi:minus'}"></ha-icon>
+            <span class="ladder-label">${this._escape(s.label)}</span>
+            <span class="ladder-note">${this._escape(s.note || '')}</span>
+          </div>`).join('')}
+      </div>`;
+    this._el.strategyDetail.innerHTML = ladderHtml + rows.map(([k, v]) =>
       `<div class="strat-detail-row"><span>${this._escape(k)}</span><span>${this._escape(v)}</span></div>`
     ).join('');
   }
 
+  /**
+   * Reconstruit le chemin de décision du flow (priorités descendantes).
+   * La première règle qui "tire" est l'état terminal — les suivantes sont
+   * court-circuitées. Tout est dérivé des attributs du sensor.
+   */
+  _decisionLadder(a) {
+    const fmtW = (v) => (v != null && !isNaN(v)) ? `${Math.round(v)} W` : '—';
+    const tempOk = a.temp_sensor_available !== false;
+    const antiInj = (a.anti_injection_useful !== undefined)
+      ? a.anti_injection_useful : a.anti_injection_active;
+    const reach = a.reach_for ?? a.target_temp;
+    const targetReached = tempOk && a.water_temp != null && reach != null
+      && a.water_temp >= reach;
+
+    const steps = [
+      { label: 'Pause manuelle',
+        cond: a.manual_hold_active === true,
+        note: a.manual_hold_active ? 'interrupteur actionné à la main' : 'non' },
+      { label: 'Automatisation',
+        cond: a.enabled === false,
+        note: a.enabled ? 'active' : 'désactivée' },
+      { label: 'Sonde température',
+        // Ancien flow : sonde HS = état figé (terminal). Flow v3+ : simple drapeau.
+        cond: !tempOk && a.degraded_sonde === undefined,
+        note: tempOk ? 'OK' : 'HS — mode dégradé',
+        warn: !tempOk },
+      { label: 'Anti-injection',
+        cond: antiInj === true,
+        note: `${fmtW(a.potential_surplus)} / seuil ${fmtW(a.surplus_trigger)}` },
+      { label: 'Légionelle critique',
+        cond: a.legionella_critical === true,
+        note: a.days_since_high_temp != null ? `${a.days_since_high_temp} j sans 60°C` : '' },
+      { label: 'Cible atteinte',
+        cond: targetReached,
+        note: (tempOk && a.water_temp != null && reach != null)
+          ? `${Number(a.water_temp).toFixed(1)}° / ${Number(reach).toFixed(0)}°` : '—' },
+      { label: 'Forçage fenêtre',
+        cond: a.is_forcing === true,
+        note: a.is_forcing ? 'dans la fenêtre optimale'
+            : (a.window_skipped_reason || (a.in_window ? 'fenêtre en cours' : 'hors fenêtre')) },
+      { label: 'Solaire (hystérésis 5 min)',
+        cond: true,
+        note: `${fmtW(a.solar_power)} / seuil ${fmtW(a.effective_trigger)}` },
+    ];
+
+    let firedIdx = steps.findIndex(s => s.cond);
+    if (firedIdx === -1) firedIdx = steps.length - 1;
+    return steps.map((s, i) => ({
+      label: s.label,
+      note: s.note,
+      warn: s.warn === true,
+      status: i === firedIdx ? 'fired' : (i < firedIdx ? 'pass' : 'skip'),
+    }));
+  }
+
   _mode(a) {
     if (a.enabled === false) return 'disabled';
-    if (a.temp_sensor_available === false) return 'sensor-error';
+    if (a.manual_hold_active === true) return 'manual-hold';
+    // Flow v3+ : sonde HS = mode dégradé, le flow continue (solaire/anti-injection),
+    // le hero suit donc l'état réel. Ancien flow (pas de degraded_sonde) : état figé.
+    if (a.temp_sensor_available === false && a.degraded_sonde === undefined) return 'sensor-error';
+    if (a.legionella_blocked === true) return 'legionella-blocked';
     if (a.legionella_critical === true) return 'legionella-critical';
-    if (a.anti_injection_active === true) return 'anti-injection';
+    if (a.legionella_critical_pending === true) return 'legionella-pending';
+    // v3 : anti_injection_useful = la latch SERT vraiment (cuve pas pleine,
+    // thermostat pas coupé). Fallback sur la latch brute pour l'ancien flow.
+    const antiInj = (a.anti_injection_useful !== undefined)
+      ? a.anti_injection_useful : a.anti_injection_active;
+    if (antiInj === true) return 'anti-injection';
     if (a.solcast_stale === true && !a.is_forcing) return 'solcast-stale';
     if (a.legionella_due === true && (a.water_temp ?? 0) < (a.reach_for ?? 60)) return 'legionella-due';
     if (a.is_forcing === true) return 'forcing';
     if (a.desired === 'on') return 'heating';
     const reach = a.reach_for ?? a.target_temp ?? 55;
-    if ((a.water_temp ?? 0) >= reach) return 'target-reached';
+    if (a.water_temp != null && a.water_temp >= reach) return 'target-reached';
     return 'idle';
   }
 
@@ -606,6 +723,9 @@ class CumulusSolaireCard extends HTMLElement {
     }
     const reach = a.reach_for ?? a.target_temp;
     if (reach != null) ticks.push({ v: Number(reach), color: '#43a047', big: true });
+    if (a.stop_temp != null && a.stop_temp !== reach && a.stop_temp !== a.forcage_threshold) {
+      ticks.push({ v: Number(a.stop_temp), color: '#26a69a', big: false });
+    }
     if (a.legionella_due === true && reach !== 60) {
       ticks.push({ v: 60, color: '#8e24aa', big: false });
     }
@@ -892,11 +1012,18 @@ class CumulusSolaireCard extends HTMLElement {
       (() => {
         const ps = Number(a.potential_surplus);
         const hasPs = ps != null && !isNaN(ps);
+        const aiUseful = (a.anti_injection_useful !== undefined)
+          ? a.anti_injection_useful : a.anti_injection_active;
         let icon, color, label;
-        if (a.anti_injection_active) {
+        if (aiUseful === true) {
           icon = 'mdi:transmission-tower-export';
           color = '#43a047';
           label = 'Anti-injection';
+        } else if (a.anti_injection_active === true) {
+          // Latch active mais rien à absorber (cuve pleine / thermostat coupé)
+          icon = 'mdi:transmission-tower-export';
+          color = '#9e9e9e';
+          label = 'Surplus (saturé)';
         } else if (hasPs && ps > 20) {
           icon = 'mdi:transmission-tower-export';
           color = '#fb8c00';
@@ -927,6 +1054,12 @@ class CumulusSolaireCard extends HTMLElement {
         value: (a.days_since_high_temp != null) ? `${a.days_since_high_temp} j` : '—',
         label: 'Sans 60°C',
       },
+      ...(a.thermostat_tripped === true ? [{
+        icon: 'mdi:thermostat-box',
+        color: '#757575',
+        value: 'coupé',
+        label: 'Thermostat',
+      }] : []),
     ];
 
     this._el.chips.innerHTML = chips.map(c => `
@@ -951,10 +1084,13 @@ class CumulusSolaireCard extends HTMLElement {
       const row = info.slider.closest('.setting-row');
       if (!so) {
         row.classList.add('missing');
+        // Helpers optionnels (ex: volume ballon) : masqués s'ils n'existent pas
+        if (info.ctrl.optional) row.style.display = 'none';
         info.valEl.textContent = '—';
         continue;
       }
       row.classList.remove('missing');
+      row.style.display = '';
 
       const minA  = parseFloat(so.attributes.min);
       const maxA  = parseFloat(so.attributes.max);
@@ -1249,6 +1385,51 @@ class CumulusSolaireCard extends HTMLElement {
         .strategy-detail { grid-template-columns: 1fr; }
       }
       .strategy.expanded .strategy-detail { display: grid; }
+
+      /* Decision ladder */
+      .ladder {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding-bottom: 8px;
+        margin-bottom: 4px;
+        border-bottom: 1px solid var(--csc-divider);
+      }
+      .ladder-title {
+        font-size: 0.62rem;
+        color: var(--csc-text-2);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 4px;
+      }
+      .ladder-row {
+        display: grid;
+        grid-template-columns: 18px auto 1fr;
+        gap: 8px;
+        align-items: center;
+        font-size: 0.74rem;
+        color: var(--csc-text-2);
+        padding: 2px 0;
+      }
+      .ladder-row ha-icon { --mdc-icon-size: 14px; }
+      .ladder-row.st-pass ha-icon { color: #43a047; }
+      .ladder-row.st-fired {
+        color: var(--csc-text);
+        font-weight: 600;
+      }
+      .ladder-row.st-fired ha-icon { color: var(--strat-accent); }
+      .ladder-row.st-skip { opacity: 0.45; }
+      .ladder-row.warn .ladder-note { color: #e53935; }
+      .ladder-note {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       .strat-detail-row {
         display: flex;
         justify-content: space-between;
@@ -1387,7 +1568,7 @@ class CumulusSolaireCard extends HTMLElement {
         padding: 0 18px;
       }
       .settings-content.expanded {
-        max-height: 600px;
+        max-height: 900px;
         padding: 4px 18px 16px 18px;
       }
 
@@ -1439,6 +1620,12 @@ class CumulusSolaireCard extends HTMLElement {
       .setting-value-sub {
         font-size: 0.75rem;
         color: var(--csc-text-2);
+      }
+      .setting-desc {
+        font-size: 0.72rem;
+        color: var(--csc-text-2);
+        line-height: 1.3;
+        margin-top: -2px;
       }
 
       /* Slider */
@@ -1535,6 +1722,7 @@ const CONTROL_LABELS = {
   solar_trigger:   'Seuil déclenchement solaire',
   surplus_trigger: 'Seuil anti-injection',
   efficiency:      'Rendement',
+  tank:            'Volume du ballon (L)',
 };
 
 class CumulusSolaireCardEditor extends HTMLElement {

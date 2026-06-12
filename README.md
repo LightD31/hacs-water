@@ -1,19 +1,20 @@
 # Cumulus Solaire Card
 
-Carte Lovelace dédiée à l'automatisation Node-RED **Cumulus Solaire v4**. Pensée pour exploiter chaque attribut exposé par `sensor.cumulus_automation` en un seul coup d'œil — état courant, température, fenêtre solaire optimale, anti-injection, anti-Legionella, fraîcheur Solcast.
+Carte Lovelace dédiée à l'automatisation Node-RED **Cumulus Solaire** (V3+). Pensée pour exploiter chaque attribut exposé par `sensor.cumulus_automation` en un seul coup d'œil — état courant, température, fenêtre solaire optimale, anti-injection, anti-Legionella, fraîcheur Solcast.
 
 ![preview](docs/preview.png)
 
 ## Ce qu'elle affiche
 
-- **Hero** — icône + titre adaptés à l'état avec priorité : automatisation désactivée → Legionella critique → anti-injection → Legionella due → Solcast périmé → forçage → chauffe → cible atteinte → veille. L'icône pulse et la barre d'accent en haut shimmer quand le cumulus chauffe activement.
-- **Cadran 270°** de la température de l'eau, avec dégradé bleu → ambre → rouge et repères colorés pour `min_temp`, `forcage_threshold`, `reach_for` et le seuil 60°C anti-Legionella (visible uniquement quand pertinent).
-- **Courbe Solcast** du jour avec lissage Bézier, bande verte sur la fenêtre optimale (`window_start` / `window_end`), curseur "maintenant" pointillé. L'âge Solcast s'affiche en rouge si périmé (>6h).
-- **Pastilles** : production solaire instantanée, surplus potentiel (avec bascule visuelle quand anti-injection active), jours depuis le dernier 60°C, fraîcheur Solcast.
+- **Hero** — icône + titre adaptés à l'état avec priorité : automatisation désactivée → pause manuelle → Legionella bloquée (thermostat) → Legionella critique → Legionella en attente HC → anti-injection (utile) → Legionella due → Solcast périmé → forçage → chauffe → cible atteinte → veille. L'icône pulse et la barre d'accent en haut shimmer quand le cumulus chauffe activement.
+- **Cadran 270°** de la température de l'eau, avec dégradé bleu → ambre → rouge et repères colorés pour `min_temp`, `forcage_threshold`, `stop_temp` (arrêt du forçage), `reach_for` et le seuil 60°C anti-Legionella (visible uniquement quand pertinent).
+- **Courbe Solcast** du jour avec lissage Bézier, bande verte sur la fenêtre optimale (`window_start` / `window_end`, figée pendant un forçage), curseur "maintenant" pointillé. L'âge Solcast s'affiche en rouge si périmé (>6h).
+- **Pastilles** : production solaire instantanée, surplus potentiel (anti-injection verte seulement quand elle *sert* — `anti_injection_useful`), jours depuis le dernier 60°C, et "Thermostat coupé" quand le thermostat mécanique a ouvert le circuit.
+- **Chemin de décision** (panneau ℹ de la bande stratégie) — les 8 priorités du flow affichées en échelle : règles passées ✓, règle qui a tranché →, règles court-circuitées grisées, avec les valeurs comparées (surplus/seuil, temp/cible, solaire/seuil effectif).
 
 ## Pré-requis
 
-Le flow Node-RED v4 doit être déployé et avoir tourné au moins une fois pour exposer ces attributs sur `sensor.cumulus_automation` :
+Le flow Node-RED doit être déployé et avoir tourné au moins une fois pour exposer ces attributs sur `sensor.cumulus_automation` :
 
 ```
 enabled, desired, current_switch,
@@ -24,6 +25,18 @@ legionella_due, legionella_critical, days_since_high_temp,
 solcast_stale, solcast_age_hours, forecast_field,
 window_start, window_end, window_avg_w, in_window, is_forcing,
 window_skipped_reason, tomorrow_mode
+```
+
+Avec le flow **V3** (juin 2026), la carte exploite en plus (tous optionnels — la carte
+retombe sur le comportement précédent s'ils sont absents) :
+
+```
+anti_injection_useful, thermostat_tripped,
+legionella_critical_pending, legionella_blocked,
+manual_hold_active, manual_hold_until,
+degraded_sonde, sonde_down_hours,
+stop_temp, dt_forcing, tank_volume_l,
+effective_trigger
 ```
 
 Pour la courbe Solcast, l'attribut `detailedForecast` du capteur Solcast aujourd'hui est lu directement.
@@ -64,7 +77,7 @@ forecast_entity: sensor.solcast_pv_forecast_previsions_pour_aujourd_hui
 
 | Clé | Type | Défaut | Description |
 |---|---|---|---|
-| `entity` | string | **requis** | L'entité produite par le flow Node-RED v4 |
+| `entity` | string | **requis** | L'entité produite par le flow Node-RED |
 | `forecast_entity` | string | `sensor.solcast_pv_forecast_previsions_pour_aujourd_hui` | Capteur Solcast pour la courbe du jour. Doit exposer `detailedForecast` en attribut. |
 | `show_settings` | string/bool | `'collapsible'` | `'collapsible'` (défaut, repliable, fermé au départ) · `'expanded'` (toujours ouvert) · `false` (masqué) |
 | `controls` | object | (voir ci-dessous) | Mapping des helpers HA contrôlés par les sliders et le toggle |
@@ -83,6 +96,10 @@ Le panneau "Réglages" (icône ⚙ en bas de la carte, repliable) expose six con
 | `solar_trigger` | slider | `input_number.cumulus_solar_trigger` | Seuil de production solaire (W). Affiche la valeur effective si modulée par `tomorrow_mode`. |
 | `surplus_trigger` | slider | `input_number.cumulus_surplus_trigger` | Seuil anti-injection (W) |
 | `efficiency` | slider | `input_number.cumulus_efficiency` | Rendement du chauffage (0–1 ou 0–100 %) |
+| `tank` | slider | `input_number.cumulus_tank_volume` | Volume du ballon (L). Optionnel — la ligne est masquée si l'helper n'existe pas. |
+
+Chaque slider affiche une courte description de son **impact réel** sur la décision
+(ex. "Plancher absolu — en dessous, forçage dans la meilleure fenêtre solaire").
 
 Les sliders lisent automatiquement `min`, `max`, `step`, `unit_of_measurement` depuis l'helper HA — pas besoin de les redéfinir dans la carte. Les changements sont envoyés à HA après 250 ms de pause (debounce), pour éviter de spammer le bus pendant qu'on déplace le curseur.
 
@@ -114,8 +131,11 @@ Toutes les couleurs d'état suivent une palette cohérente :
 
 | État | Couleur | Quand |
 |---|---|---|
+| ✋ Pause manuelle | Violet `#8e24aa` | `manual_hold_active = true` |
+| 🛑 Legionella bloquée | Rouge `#e53935` | `legionella_blocked = true` (thermostat mécanique coupe avant 62°C) |
 | 🦠 Legionella critique | Rouge `#e53935` | `legionella_critical = true` |
-| ⚡ Anti-injection | Vert `#43a047` | `anti_injection_active = true` |
+| ⏳ Legionella en attente | Orange `#fb8c00` | `legionella_critical_pending = true` (chauffe planifiée aux heures creuses) |
+| ⚡ Anti-injection | Vert `#43a047` | `anti_injection_useful = true` (fallback : `anti_injection_active`) |
 | ⚠️ Legionella due | Orange `#fb8c00` | `legionella_due = true` (et eau < cible) |
 | 📡 Solcast périmé | Gris `#757575` | `solcast_stale = true` (sans forçage) |
 | 🔥 Forçage | Orange `#fb8c00` | `is_forcing = true` |
