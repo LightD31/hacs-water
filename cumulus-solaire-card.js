@@ -420,7 +420,6 @@ class CumulusSolaireCard extends HTMLElement {
 
   _renderStrategy(a) {
     const mode = a.tomorrow_mode;
-    const uncertain = a.forecast_uncertainty != null && a.forecast_uncertainty >= 0.5;
 
     let icon = 'mdi:strategy';
     let why = '';
@@ -452,21 +451,20 @@ class CumulusSolaireCard extends HTMLElement {
       accentVar = '#fb8c00';
     } else if (mode === 'good') {
       icon = 'mdi:weather-sunny';
-      why = 'Demain ensoleillé — on laisse la citerne tiédir, moins de seuil';
+      why = 'Demain ensoleillé — seuil solaire relevé, on attend un meilleur soleil';
       accentVar = '#43a047';
     } else if (mode === 'poor') {
       icon = 'mdi:weather-cloudy';
-      why = 'Demain faible — on conserve une marge thermique';
+      why = 'Demain faible — seuil solaire abaissé, on capte le moindre soleil';
       accentVar = '#1e88e5';
     } else if (mode === 'mixed') {
       icon = 'mdi:weather-partly-cloudy';
-      why = 'Demain moyen — chauffe prudente';
+      why = 'Demain moyen — seuil solaire standard';
       accentVar = '#fb8c00';
     } else {
       icon = 'mdi:strategy';
       why = 'Stratégie standard';
     }
-    if (uncertain) why += ' · prévision incertaine';
 
     this._el.strategyIcon.setAttribute('icon', icon);
     this._el.strategyWhyText.textContent = why;
@@ -480,7 +478,6 @@ class CumulusSolaireCard extends HTMLElement {
     const pills = [];
     const reach = a.reach_for;
     const target = a.target_temp;
-    const borrow = a.borrowable_deg;
     if (reach != null && target != null) {
       let sub = '= cible';
       let tone = 'neutral';
@@ -491,8 +488,6 @@ class CumulusSolaireCard extends HTMLElement {
       } else if (reach - target > 0.1) {
         sub = `↑ +${(reach - target).toFixed(1)}°C legio`;
         tone = 'up';
-      } else if (borrow != null && borrow > 0.5) {
-        sub = `−${Number(borrow).toFixed(1)}°C possibles`;
       }
       pills.push({
         icon: 'mdi:thermometer-check',
@@ -570,13 +565,8 @@ class CumulusSolaireCard extends HTMLElement {
     // --- Detail (expandable) ---
     const fmtPct = (v) => Math.round(Number(v) * 100) + '%';
     const rows = [];
-    if (a.effective_score != null) rows.push(['Score effectif', fmtPct(a.effective_score)]);
     if (a.tomorrow_score != null) rows.push(['Score demain', fmtPct(a.tomorrow_score)]);
     if (a.worst_next2_score != null) rows.push(['Pire J+1/J+2', fmtPct(a.worst_next2_score)]);
-    if (a.tomorrow_weight != null) rows.push(['Poids demain', fmtPct(a.tomorrow_weight)]);
-    if (a.forecast_uncertainty != null) rows.push(['Incertitude', fmtPct(a.forecast_uncertainty)]);
-    if (a.borrowable_deg != null) rows.push(['Économie max grâce à demain', `${Number(a.borrowable_deg).toFixed(1)}°C`]);
-    if (a.floor_temp != null) rows.push(['Cible minimale (si météo parfaite)', `${Number(a.floor_temp).toFixed(1)}°C`]);
     if (a.trig_mult != null) rows.push(['Multiplicateur seuil', `×${Number(a.trig_mult).toFixed(2)}`]);
     if (a.stop_temp != null) rows.push(['Arrêt du forçage', `${Number(a.stop_temp).toFixed(1)}°C`]);
     if (a.dt_forcing != null && a.dt_forcing > 0) rows.push(['Besoin forçage', `${Number(a.dt_forcing).toFixed(1)}°C`]);
