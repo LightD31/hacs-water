@@ -8,13 +8,13 @@
  *   1. Hero (état + raison + heure)
  *   2. Cadran 270° température eau
  *   3. Courbe Solcast du jour avec fenêtre optimale + curseur "now"
- *   4. Pastilles : production / surplus / legionella / Solcast
+ *   4. Pastilles : production / surplus / legionella / solaire amont
  *   5. Réglages (sliders + toggle, repliable)
  *
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.10.0';
+const VERSION = '1.11.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -34,6 +34,7 @@ const MODES = {
   'solcast-stale':       { color: '#757575', icon: 'mdi:cloud-off-outline',         title: 'Solcast périmé',            active: false },
   'forcing':             { color: '#fb8c00', icon: 'mdi:flash',                     title: 'Forçage dans la fenêtre',   active: true  },
   'heating':             { color: '#43a047', icon: 'mdi:water-boiler',              title: 'Chauffe avec le solaire',   active: true  },
+  'solar-upstream':      { color: '#26a69a', icon: 'mdi:solar-power-variant',       title: 'Eau fournie par le solaire amont', active: false },
   'target-reached':      { color: '#1e88e5', icon: 'mdi:check-circle-outline',      title: 'Cible atteinte',            active: false },
   'idle':                { color: '#1e88e5', icon: 'mdi:water-boiler-auto',         title: 'En attente',                active: false },
 };
@@ -449,6 +450,11 @@ class CumulusSolaireCard extends HTMLElement {
       icon = 'mdi:bacteria-outline';
       why = 'Cycle anti-légionelle à programmer — cible remontée à 62°C';
       accentVar = '#fb8c00';
+    } else if (a.solar_covers_target === true && a.desired !== 'on') {
+      icon = 'mdi:solar-power-variant';
+      const t = (a.solar_upstream_temp != null) ? `${Number(a.solar_upstream_temp).toFixed(0)}°C` : 'à la cible';
+      why = `Cumulus solaire amont à ${t} — l'appoint électrique reste en veille`;
+      accentVar = '#26a69a';
     } else if (mode === 'good') {
       icon = 'mdi:weather-sunny';
       why = 'Demain ensoleillé — seuil solaire relevé, on attend un meilleur soleil';
@@ -630,6 +636,13 @@ class CumulusSolaireCard extends HTMLElement {
         cond: targetReached,
         note: (tempOk && a.water_temp != null && reach != null)
           ? `${Number(a.water_temp).toFixed(1)}° / ${Number(reach).toFixed(0)}°` : '—' },
+      // Présent seulement avec le flow "solaire amont" (rétro-compat).
+      ...(a.solar_upstream_available !== undefined ? [{
+        label: 'Cumulus solaire',
+        cond: a.solar_covers_target === true,
+        note: (a.solar_upstream_temp != null && a.solar_sufficient_threshold != null)
+          ? `${Number(a.solar_upstream_temp).toFixed(1)}° / ${Number(a.solar_sufficient_threshold).toFixed(0)}°`
+          : (a.solar_upstream_available === false ? 'sonde amont indispo' : '—') }] : []),
       { label: 'Forçage fenêtre',
         cond: a.is_forcing === true,
         note: a.is_forcing ? 'dans la fenêtre optimale'
@@ -665,6 +678,10 @@ class CumulusSolaireCard extends HTMLElement {
     if (antiInj === true) return 'anti-injection';
     if (a.solcast_stale === true && !a.is_forcing) return 'solcast-stale';
     if (a.legionella_due === true && (a.water_temp ?? 0) < (a.reach_for ?? 60)) return 'legionella-due';
+    // Le cumulus solaire amont couvre déjà la cible → l'électrique est coupé
+    // (desired off), même si une fenêtre de forçage est encore latchée sur la
+    // cuve élec. (le solaire amont ne refroidit pas cette cuve).
+    if (a.solar_covers_target === true && a.desired !== 'on') return 'solar-upstream';
     if (a.is_forcing === true) return 'forcing';
     if (a.desired === 'on') return 'heating';
     const reach = a.reach_for ?? a.target_temp ?? 55;
@@ -1044,6 +1061,13 @@ class CumulusSolaireCard extends HTMLElement {
         value: (a.days_since_high_temp != null) ? `${a.days_since_high_temp} j` : '—',
         label: 'Sans 60°C',
       },
+      // Cumulus solaire amont — affiché seulement si la sonde existe
+      ...(a.solar_upstream_temp != null ? [{
+        icon: a.solar_covers_target ? 'mdi:solar-power-variant' : 'mdi:water-thermometer-outline',
+        color: a.solar_covers_target ? '#26a69a' : '#1e88e5',
+        value: `${Number(a.solar_upstream_temp).toFixed(1)}°`,
+        label: 'Solaire amont',
+      }] : []),
       ...(a.thermostat_tripped === true ? [{
         icon: 'mdi:thermostat-box',
         color: '#757575',

@@ -6,11 +6,11 @@ Carte Lovelace dédiée à l'automatisation Node-RED **Cumulus Solaire** (V3+). 
 
 ## Ce qu'elle affiche
 
-- **Hero** — icône + titre adaptés à l'état avec priorité : automatisation désactivée → pause manuelle → Legionella bloquée (thermostat) → Legionella critique → Legionella en attente HC → anti-injection (utile) → Legionella due → Solcast périmé → forçage → chauffe → cible atteinte → veille. L'icône pulse et la barre d'accent en haut shimmer quand le cumulus chauffe activement.
+- **Hero** — icône + titre adaptés à l'état avec priorité : automatisation désactivée → pause manuelle → Legionella bloquée (thermostat) → Legionella critique → Legionella en attente HC → anti-injection (utile) → Legionella due → Solcast périmé → forçage → chauffe → **solaire amont** (eau déjà fournie à la cible par le cumulus solaire) → cible atteinte → veille. L'icône pulse et la barre d'accent en haut shimmer quand le cumulus chauffe activement.
 - **Cadran 270°** de la température de l'eau, avec dégradé bleu → ambre → rouge et repères colorés pour `min_temp`, `forcage_threshold`, `stop_temp` (arrêt du forçage), `reach_for` et le seuil 60°C anti-Legionella (visible uniquement quand pertinent).
 - **Courbe Solcast** du jour avec lissage Bézier, bande verte sur la fenêtre optimale (`window_start` / `window_end`, figée pendant un forçage), curseur "maintenant" pointillé. L'âge Solcast s'affiche en rouge si périmé (>6h).
-- **Pastilles** : production solaire instantanée, surplus potentiel (anti-injection verte seulement quand elle *sert* — `anti_injection_useful`), jours depuis le dernier 60°C, et "Thermostat coupé" quand le thermostat mécanique a ouvert le circuit.
-- **Chemin de décision** (panneau ℹ de la bande stratégie) — les 8 priorités du flow affichées en échelle : règles passées ✓, règle qui a tranché →, règles court-circuitées grisées, avec les valeurs comparées (surplus/seuil, temp/cible, solaire/seuil effectif).
+- **Pastilles** : production solaire instantanée, surplus potentiel (anti-injection verte seulement quand elle *sert* — `anti_injection_useful`), jours depuis le dernier 60°C, température du **cumulus solaire amont** (`solar_upstream_temp`, teal quand elle couvre déjà la cible), et "Thermostat coupé" quand le thermostat mécanique a ouvert le circuit.
+- **Chemin de décision** (panneau ℹ de la bande stratégie) — les 9 priorités du flow affichées en échelle : règles passées ✓, règle qui a tranché →, règles court-circuitées grisées, avec les valeurs comparées (surplus/seuil, temp/cible, solaire amont/seuil, solaire/seuil effectif).
 
 ## Pré-requis
 
@@ -39,7 +39,41 @@ stop_temp, dt_forcing, tank_volume_l,
 effective_trigger
 ```
 
+Avec le flow **« solaire amont »** (juin 2026), la carte exploite en plus :
+
+```
+solar_upstream_temp, solar_upstream_available,
+solar_covers_target, solar_sufficient_threshold, solar_sufficient_margin
+```
+
 Pour la courbe Solcast, l'attribut `detailedForecast` du capteur Solcast aujourd'hui est lu directement.
+
+## Cumulus solaire en amont (préchauffe en série)
+
+Si un cumulus **solaire** est plombé **en série, en amont** du cumulus électrique
+(l'eau froide traverse d'abord le ballon solaire, puis le ballon électrique), il
+n'y a aucune raison de chauffer électriquement quand le ballon solaire fournit
+déjà l'eau à la cible.
+
+Le flow lit la sonde du ballon solaire (`sensor.temp_cumulus_solaire_temperature`)
+et, à une priorité **inférieure** à l'anti-injection (surplus) et à
+l'anti-légionelle, coupe l'appoint électrique dès que :
+
+```
+temp_cumulus_solaire ≥ cible_effective (reach_for) + marge
+```
+
+- La **marge** (`solar_sufficient_margin`, défaut **3 °C**) couvre la
+  stratification du ballon solaire et les pertes en ligne — l'eau n'arrive
+  jamais tiède au robinet. Réglable via la variable d'environnement Node-RED
+  `SOLAR_SUFFICIENT_MARGIN`.
+- **L'anti-injection est conservée** : un surplus réseau qui dure force quand
+  même la chauffe (on stocke l'énergie gratuite), priorité supérieure.
+- **L'anti-légionelle est conservée** : le cycle critique force la chauffe ; et
+  comme le seuil se base sur `reach_for` (relevé à 62 °C quand la légionelle est
+  due), la coupure « solaire amont » ne court-circuite pas le cycle.
+- Si la sonde solaire est indisponible, la règle ne s'applique pas : le flow
+  retombe sur son comportement habituel.
 
 ## Installation via HACS (custom repository)
 
@@ -140,6 +174,7 @@ Toutes les couleurs d'état suivent une palette cohérente :
 | 📡 Solcast périmé | Gris `#757575` | `solcast_stale = true` (sans forçage) |
 | 🔥 Forçage | Orange `#fb8c00` | `is_forcing = true` |
 | 💧 Chauffe | Vert `#43a047` | `desired = on` (autres cas) |
+| ☀️ Solaire amont | Teal `#26a69a` | `solar_covers_target = true` (le cumulus solaire fournit déjà l'eau à la cible) |
 | ✅ Cible atteinte | Bleu `#1e88e5` | `water_temp >= reach_for` |
 | 💤 Veille | Bleu `#1e88e5` | par défaut |
 | 🤖 Désactivée | Gris `#9e9e9e` | `enabled = false` |
