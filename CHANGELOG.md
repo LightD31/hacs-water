@@ -2,6 +2,19 @@
 
 Toutes les modifications notables pour ce dépôt sont listées ci-dessous.
 
+## [v1.11.1] - 2026-06-23
+
+- **Correctif : fausse « commande manuelle » à chaque reboot HA.** Au démarrage
+  de Home Assistant, `switch.cumulus` passe par `unavailable`/`unknown` (ou est
+  momentanément absent du registre d'états). Le flow comparait cet état
+  transitoire à l'état attendu persistant et déclenchait une fausse intervention
+  manuelle → pause de 45 min. La détection ignore désormais les états non
+  exploitables : « Lire capteurs » expose `switchAvailable` et se replie sur le
+  dernier état connu (plus de coercition vers `'off'`) ; la détection manuelle et
+  la commande du relais sont conditionnées à un état lisible. Nouvel attribut
+  `switch_available`.
+- Fichiers modifiés : `flows.json`, `CHANGELOG.md`.
+
 ## [v1.11.0] - 2026-06-22
 
 - **Cumulus solaire en amont (préchauffe en série).** Le flow lit
