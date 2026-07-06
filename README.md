@@ -6,7 +6,7 @@ Carte Lovelace dédiée à l'automatisation Node-RED **Cumulus Solaire** (V3+). 
 
 ## Ce qu'elle affiche
 
-- **Hero** — icône + titre adaptés à l'état avec priorité : automatisation désactivée → pause manuelle → Legionella bloquée (thermostat) → Legionella critique → Legionella en attente HC → anti-injection (utile) → Legionella due → Solcast périmé → forçage → chauffe → **solaire amont** (eau déjà fournie à la cible par le cumulus solaire) → cible atteinte → veille. L'icône pulse et la barre d'accent en haut shimmer quand le cumulus chauffe activement.
+- **Hero** — icône + titre adaptés à l'état avec priorité : automatisation désactivée → pause manuelle → Legionella forcée (thermostat suspect) → Legionella critique → Legionella en attente HC → anti-injection (utile) → Legionella due → Solcast périmé → forçage → chauffe → **solaire amont** (eau déjà fournie à la cible par le cumulus solaire) → cible atteinte → veille. L'icône pulse et la barre d'accent en haut shimmer quand le cumulus chauffe activement.
 - **Cadran 270°** de la température de l'eau, avec dégradé bleu → ambre → rouge et repères colorés pour `min_temp`, `forcage_threshold`, `stop_temp` (arrêt du forçage), `reach_for` et le seuil 60°C anti-Legionella (visible uniquement quand pertinent).
 - **Courbe Solcast** du jour avec lissage Bézier, bande verte sur la fenêtre optimale (`window_start` / `window_end`, figée pendant un forçage), curseur "maintenant" pointillé. L'âge Solcast s'affiche en rouge si périmé (>6h).
 - **Pastilles** : production solaire instantanée, surplus potentiel (anti-injection verte seulement quand elle *sert* — `anti_injection_useful`), jours depuis le dernier 60°C, température du **cumulus solaire amont** (`solar_upstream_temp`, teal quand elle couvre déjà la cible), et "Thermostat coupé" quand le thermostat mécanique a ouvert le circuit.
@@ -166,7 +166,7 @@ Toutes les couleurs d'état suivent une palette cohérente :
 | État | Couleur | Quand |
 |---|---|---|
 | ✋ Pause manuelle | Violet `#8e24aa` | `manual_hold_active = true` |
-| 🛑 Legionella bloquée | Rouge `#e53935` | `legionella_blocked = true` (thermostat mécanique coupe avant 62°C) |
+| 🛑 Legionella forcée (thermostat suspect) | Rouge `#e53935` | `legionella_blocked = true` (thermostat mécanique semble couper avant 62°C — relais forcé quand même) |
 | 🦠 Legionella critique | Rouge `#e53935` | `legionella_critical = true` |
 | ⏳ Legionella en attente | Orange `#fb8c00` | `legionella_critical_pending = true` (chauffe planifiée aux heures creuses) |
 | ⚡ Anti-injection | Vert `#43a047` | `anti_injection_useful = true` (fallback : `anti_injection_active`) |
