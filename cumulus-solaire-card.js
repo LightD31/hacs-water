@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.11.0';
+const VERSION = '1.11.2';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -432,7 +432,7 @@ class CumulusSolaireCard extends HTMLElement {
       accentVar = '#8e24aa';
     } else if (a.legionella_blocked) {
       icon = 'mdi:alert-octagon-outline';
-      why = 'Anti-légionelle impossible — le thermostat mécanique coupe avant 62°C';
+      why = 'Anti-légionelle forcé — le thermostat mécanique semble couper avant 62°C';
       accentVar = '#e53935';
     } else if (a.degraded_sonde) {
       icon = 'mdi:thermometer-off';

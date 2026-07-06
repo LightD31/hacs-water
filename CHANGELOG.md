@@ -2,6 +2,22 @@
 
 Toutes les modifications notables pour ce dépôt sont listées ci-dessous.
 
+## [v1.11.2] - 2026-07-06
+
+- **Anti-légionelle critique : ne plus abandonner quand le thermostat semble
+  coupé.** Auparavant, si `thermostatTripped` était détecté pendant un cycle
+  critique, le flow désactivait `legionellaCritical` (aucune action) et se
+  contentait de notifier. Le relais reste désormais forcé ON malgré la
+  détection — au pire sans effet si le thermostat mécanique coupe réellement
+  avant 62 °C, mais sans renoncer à la tentative. `legionellaBlocked` sert
+  uniquement à l'affichage/notification (« anti-légionelle forcé malgré
+  thermostat coupé »), plus à bloquer l'action.
+- **Carte** : libellé hero et table des couleurs mis à jour (« Legionella
+  forcée (thermostat suspect) » au lieu de « Legionella bloquée »). Bump carte
+  v1.11.2.
+- Fichiers modifiés : `flows.json`, `cumulus-solaire-card.js`, `README.md`,
+  `CHANGELOG.md`.
+
 ## [v1.11.1] - 2026-06-23
 
 - **Correctif : fausse « commande manuelle » à chaque reboot HA.** Au démarrage
