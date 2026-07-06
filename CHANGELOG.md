@@ -15,6 +15,13 @@ Toutes les modifications notables pour ce dépôt sont listées ci-dessous.
 - **Carte** : libellé hero et table des couleurs mis à jour (« Legionella
   forcée (thermostat suspect) » au lieu de « Legionella bloquée »). Bump carte
   v1.11.2.
+- **Anti-injection : même correctif.** `antiInjUseful` ne dégage plus sur
+  `thermostatTripped` non plus. `thermostatTripped` est une lecture
+  instantanée (le thermostat mécanique peut simplement être en creux de son
+  propre cycle d'hystérésis) ; désactiver l'anti-injection dessus pouvait
+  faire couper le relais par une priorité inférieure et manquer l'absorption
+  du surplus dès que le thermostat referme le circuit de lui-même. Seule la
+  cible atteinte (`temp >= reach_for`) arrête encore le forçage.
 - Fichiers modifiés : `flows.json`, `cumulus-solaire-card.js`, `README.md`,
   `CHANGELOG.md`.
 
