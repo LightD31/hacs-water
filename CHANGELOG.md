@@ -2,6 +2,18 @@
 
 Toutes les modifications notables pour ce dépôt sont listées ci-dessous.
 
+## [v1.11.3] - 2026-07-12
+
+- **Anti-injection : plus de plafond logiciel sur la température.**
+  `antiInjUseful` ne s'arrêtait plus qu'à `reach_for` (la cible normale), ce
+  qui limitait l'intérêt de l'anti-injection à absorber le surplus au même
+  niveau que le chauffage habituel — sans réellement stocker l'énergie
+  gratuite en trop. Désormais, tant que le surplus est actif
+  (`antiInjActive`), le forçage continue au-delà de `reach_for` : le cumulus
+  devient une batterie thermique gratuite, jusqu'à ce que le thermostat
+  mécanique du ballon coupe lui-même le circuit (seul plafond restant).
+- Fichiers modifiés : `flows.json`, `README.md`, `CHANGELOG.md`.
+
 ## [v1.11.2] - 2026-07-06
 
 - **Anti-légionelle critique : ne plus abandonner quand le thermostat semble

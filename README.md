@@ -68,7 +68,10 @@ temp_cumulus_solaire ≥ cible_effective (reach_for) + marge
   jamais tiède au robinet. Réglable via la variable d'environnement Node-RED
   `SOLAR_SUFFICIENT_MARGIN`.
 - **L'anti-injection est conservée** : un surplus réseau qui dure force quand
-  même la chauffe (on stocke l'énergie gratuite), priorité supérieure.
+  même la chauffe (on stocke l'énergie gratuite), priorité supérieure. Aucun
+  plafond logiciel : tant que le surplus est actif, la chauffe continue même
+  au-delà de `reach_for` (le cumulus devient une batterie thermique gratuite),
+  jusqu'à ce que le thermostat mécanique du ballon coupe lui-même le circuit.
 - **L'anti-légionelle est conservée** : le cycle critique force la chauffe ; et
   comme le seuil se base sur `reach_for` (relevé à 62 °C quand la légionelle est
   due), la coupure « solaire amont » ne court-circuite pas le cycle.
