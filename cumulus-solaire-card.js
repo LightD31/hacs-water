@@ -14,7 +14,7 @@
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.11.2';
+const VERSION = '1.11.4';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,

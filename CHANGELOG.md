@@ -2,6 +2,19 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.11.4] - 2026-07-15
+
+- **Style : phrases nominales, sans tiret cadratin.** Reformulation de
+  `README.md`, `CHANGELOG.md`, ainsi que des libellés et messages de
+  `flows.json` (commentaires de nœuds, notifications, raisons affichées) et
+  `cumulus-solaire-card.js` (titres d'état, descriptions des sliders, textes
+  de la bande stratégie), ton neutre et factuel. Tirets cadratins remplacés
+  par virgule, deux-points ou parenthèses selon le contexte. Aucun changement
+  de comportement fonctionnel.
+- **Carte** : bump v1.11.4.
+- Fichiers modifiés : `README.md`, `CHANGELOG.md`, `flows.json`,
+  `cumulus-solaire-card.js`.
+
 ## [v1.11.3] - 2026-07-12
 
 - **Anti-injection : suppression du plafond logiciel sur la température.**
