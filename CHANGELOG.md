@@ -1,63 +1,64 @@
 # Changelog
 
-Toutes les modifications notables pour ce dépôt sont listées ci-dessous.
+Modifications notables de ce dépôt, listées ci-dessous.
 
 ## [v1.11.3] - 2026-07-12
 
-- **Anti-injection : plus de plafond logiciel sur la température.**
-  `antiInjUseful` ne s'arrêtait plus qu'à `reach_for` (la cible normale), ce
-  qui limitait l'intérêt de l'anti-injection à absorber le surplus au même
-  niveau que le chauffage habituel — sans réellement stocker l'énergie
-  gratuite en trop. Désormais, tant que le surplus est actif
-  (`antiInjActive`), le forçage continue au-delà de `reach_for` : le cumulus
-  devient une batterie thermique gratuite, jusqu'à ce que le thermostat
-  mécanique du ballon coupe lui-même le circuit (seul plafond restant).
+- **Anti-injection : suppression du plafond logiciel sur la température.**
+  Auparavant, arrêt de `antiInjUseful` dès `reach_for` (cible normale), donc
+  absorption du surplus au même niveau que le chauffage habituel, sans
+  stockage réel de l'énergie gratuite en trop. Désormais, forçage au-delà de
+  `reach_for` en cas de surplus actif (`antiInjActive`) : cumulus en batterie
+  thermique gratuite, jusqu'à coupure du circuit par le thermostat mécanique
+  du ballon (seul plafond restant).
 - Fichiers modifiés : `flows.json`, `README.md`, `CHANGELOG.md`.
 
 ## [v1.11.2] - 2026-07-06
 
-- **Anti-légionelle critique : ne plus abandonner quand le thermostat semble
-  coupé.** Auparavant, si `thermostatTripped` était détecté pendant un cycle
-  critique, le flow désactivait `legionellaCritical` (aucune action) et se
-  contentait de notifier. Le relais reste désormais forcé ON malgré la
-  détection — au pire sans effet si le thermostat mécanique coupe réellement
-  avant 62 °C, mais sans renoncer à la tentative. `legionellaBlocked` sert
-  uniquement à l'affichage/notification (« anti-légionelle forcé malgré
-  thermostat coupé »), plus à bloquer l'action.
+- **Anti-légionelle critique : abandon supprimé en cas de thermostat
+  probablement coupé.** Auparavant, en cas de détection de `thermostatTripped`
+  pendant un cycle critique, désactivation de `legionellaCritical` par le
+  flow (aucune action) et simple notification. Désormais, relais forcé ON
+  malgré la détection, sans effet au pire en cas de coupure réelle par le
+  thermostat mécanique avant 62 °C, mais sans abandon de la tentative.
+  `legionellaBlocked` réservé à l'affichage et à la notification
+  (« anti-légionelle forcé malgré thermostat coupé »), plus de blocage de
+  l'action.
 - **Carte** : libellé hero et table des couleurs mis à jour (« Legionella
   forcée (thermostat suspect) » au lieu de « Legionella bloquée »). Bump carte
   v1.11.2.
-- **Anti-injection : même correctif.** `antiInjUseful` ne dégage plus sur
-  `thermostatTripped` non plus. `thermostatTripped` est une lecture
-  instantanée (le thermostat mécanique peut simplement être en creux de son
-  propre cycle d'hystérésis) ; désactiver l'anti-injection dessus pouvait
-  faire couper le relais par une priorité inférieure et manquer l'absorption
-  du surplus dès que le thermostat referme le circuit de lui-même. Seule la
-  cible atteinte (`temp >= reach_for`) arrête encore le forçage.
+- **Anti-injection : même correctif.** Suppression de la désactivation de
+  `antiInjUseful` sur `thermostatTripped` également, lecture instantanée
+  (thermostat mécanique éventuellement en creux de son propre cycle
+  d'hystérésis) dont la prise en compte risquait une coupure du relais par
+  une priorité inférieure et un manque d'absorption du surplus à la
+  fermeture du circuit par le thermostat lui-même. Seul arrêt du forçage
+  restant : cible atteinte (`temp >= reach_for`).
 - Fichiers modifiés : `flows.json`, `cumulus-solaire-card.js`, `README.md`,
   `CHANGELOG.md`.
 
 ## [v1.11.1] - 2026-06-23
 
 - **Correctif : fausse « commande manuelle » à chaque reboot HA.** Au démarrage
-  de Home Assistant, `switch.cumulus` passe par `unavailable`/`unknown` (ou est
-  momentanément absent du registre d'états). Le flow comparait cet état
-  transitoire à l'état attendu persistant et déclenchait une fausse intervention
-  manuelle → pause de 45 min. La détection ignore désormais les états non
-  exploitables : « Lire capteurs » expose `switchAvailable` et se replie sur le
-  dernier état connu (plus de coercition vers `'off'`) ; la détection manuelle et
-  la commande du relais sont conditionnées à un état lisible. Nouvel attribut
-  `switch_available`.
+  de Home Assistant, passage de `switch.cumulus` par `unavailable`/`unknown`
+  (ou absence momentanée du registre d'états). Auparavant, comparaison de cet
+  état transitoire à l'état attendu persistant par le flow, avec déclenchement
+  d'une fausse intervention manuelle → pause de 45 min. Désormais, états non
+  exploitables ignorés par la détection : `switchAvailable` exposé par
+  « Lire capteurs », avec repli sur le dernier état connu (plus de coercition
+  vers `'off'`) ; détection manuelle et commande du relais conditionnées à un
+  état lisible. Nouvel attribut `switch_available`.
 - Fichiers modifiés : `flows.json`, `CHANGELOG.md`.
 
 ## [v1.11.0] - 2026-06-22
 
-- **Cumulus solaire en amont (préchauffe en série).** Le flow lit
-  `sensor.temp_cumulus_solaire_temperature` et coupe l'appoint électrique quand
-  le ballon solaire fournit déjà l'eau à la cible (`reach_for` + marge, défaut
-  3 °C, réglable via `SOLAR_SUFFICIENT_MARGIN`). Nouvelle priorité « 6. Cumulus
-  solaire couvre ? » placée **sous** l'anti-injection et l'anti-légionelle, qui
-  restent prioritaires ; forçage et chauffe solaire renumérotés 7→9.
+- **Cumulus solaire en amont (préchauffe en série).** Lecture de
+  `sensor.temp_cumulus_solaire_temperature` par le flow, avec coupure de
+  l'appoint électrique dès fourniture de l'eau à la cible par le ballon
+  solaire (`reach_for` + marge, défaut 3 °C, réglable via
+  `SOLAR_SUFFICIENT_MARGIN`). Nouvelle priorité « 6. Cumulus solaire couvre ? »
+  placée **sous** l'anti-injection et l'anti-légionelle, prioritaires ;
+  forçage et chauffe solaire renumérotés 7→9.
 - **Carte** : nouvel état hero « Solaire amont », pastille température du ballon
   solaire, étape « Cumulus solaire » dans le chemin de décision, message dédié
   dans la bande stratégie. Nouveaux attributs : `solar_upstream_temp`,
@@ -69,7 +70,7 @@ Toutes les modifications notables pour ce dépôt sont listées ci-dessous.
 
 ## [v1.9.3] - 2026-06-12
 
-- Maintenance: `chore(release): v1.9.3` — publication de la release v1.9.3.
+- Maintenance : `chore(release): v1.9.3`, publication de la release v1.9.3.
 - Fichiers modifiés: `README.md`, `cumulus-solaire-card.js`.
 - Release publique: https://github.com/LightD31/hacs-water/releases/tag/v1.9.3
 

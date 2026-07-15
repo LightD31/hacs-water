@@ -24,16 +24,16 @@ console.info(
 
 const MODES = {
   'disabled':            { color: '#9e9e9e', icon: 'mdi:robot-off',                 title: 'Automatisation désactivée', active: false },
-  'manual-hold':         { color: '#8e24aa', icon: 'mdi:hand-back-right',           title: 'Pause — commande manuelle', active: false },
-  'sensor-error':        { color: '#e53935', icon: 'mdi:thermometer-off',           title: 'Sonde HS — état maintenu',  active: false },
+  'manual-hold':         { color: '#8e24aa', icon: 'mdi:hand-back-right',           title: 'Pause, commande manuelle', active: false },
+  'sensor-error':        { color: '#e53935', icon: 'mdi:thermometer-off',           title: 'Sonde HS, état maintenu',  active: false },
   'legionella-blocked':  { color: '#e53935', icon: 'mdi:alert-octagon-outline',     title: 'Anti-légionelle impossible', active: false },
   'legionella-critical': { color: '#e53935', icon: 'mdi:bacteria',                  title: 'Cycle anti-Legionella',     active: true  },
   'legionella-pending':  { color: '#fb8c00', icon: 'mdi:bacteria',                  title: 'Anti-légionelle en attente (HC)', active: false },
-  'anti-injection':      { color: '#43a047', icon: 'mdi:transmission-tower-export', title: 'Charge le surplus solaire', active: true  },
+  'anti-injection':      { color: '#43a047', icon: 'mdi:transmission-tower-export', title: 'Charge du surplus solaire', active: true  },
   'legionella-due':      { color: '#fb8c00', icon: 'mdi:bacteria-outline',          title: 'Legionella à programmer',   active: false },
   'solcast-stale':       { color: '#757575', icon: 'mdi:cloud-off-outline',         title: 'Solcast périmé',            active: false },
   'forcing':             { color: '#fb8c00', icon: 'mdi:flash',                     title: 'Forçage dans la fenêtre',   active: true  },
-  'heating':             { color: '#43a047', icon: 'mdi:water-boiler',              title: 'Chauffe avec le solaire',   active: true  },
+  'heating':             { color: '#43a047', icon: 'mdi:water-boiler',              title: 'Chauffe au solaire',        active: true  },
   'solar-upstream':      { color: '#26a69a', icon: 'mdi:solar-power-variant',       title: 'Eau fournie par le solaire amont', active: false },
   'target-reached':      { color: '#1e88e5', icon: 'mdi:check-circle-outline',      title: 'Cible atteinte',            active: false },
   'idle':                { color: '#1e88e5', icon: 'mdi:water-boiler-auto',         title: 'En attente',                active: false },
@@ -42,19 +42,19 @@ const MODES = {
 const DEFAULT_CONTROLS = {
   enabled:         { entity: 'input_boolean.cumulus_automation_enabled', label: 'Automatisation',     type: 'toggle' },
   target:          { entity: 'input_number.cumulus_target_temp',         label: 'Cible',              type: 'slider', icon: 'mdi:thermometer-check',
-                     desc: "Température visée quand la météo de demain ne permet pas de report" },
+                     desc: "Température visée, en l'absence de report selon la météo de demain" },
   min:             { entity: 'input_number.cumulus_min_temp',            label: 'Minimum',            type: 'slider', icon: 'mdi:thermometer-low',
-                     desc: "Plancher absolu — en dessous, forçage dans la meilleure fenêtre solaire" },
+                     desc: "Plancher absolu, avec forçage dans la meilleure fenêtre solaire en dessous" },
   solar_trigger:   { entity: 'input_number.cumulus_solar_trigger',       label: 'Seuil solaire',      type: 'slider', icon: 'mdi:solar-power',
                      subtitleAttr: 'effective_trigger', subtitleLabel: 'effectif', subtitleUnit: 'W',
-                     desc: "Production mini pour chauffer en direct (modulé ±10 % par la météo de demain)" },
+                     desc: "Production mini pour chauffer en direct" },
   surplus_trigger: { entity: 'input_number.cumulus_surplus_trigger',     label: 'Seuil anti-injection', type: 'slider', icon: 'mdi:transmission-tower-export',
-                     desc: "Surplus exporté pendant ≥ 5 min qui force l'allumage" },
+                     desc: "Surplus exporté pendant ≥ 5 min, avec forçage de l'allumage" },
   efficiency:      { entity: 'input_number.cumulus_efficiency',          label: 'Rendement',          type: 'slider', icon: 'mdi:percent-circle',
-                     desc: "Conversion électricité → chaleur utile (pertes incluses) — pilote durées et cible adaptative" },
+                     desc: "Conversion électricité vers chaleur utile, avec pilotage des durées et de la cible adaptative" },
   tank:            { entity: 'input_number.cumulus_tank_volume',         label: 'Volume ballon',      type: 'slider', icon: 'mdi:water-boiler',
                      optional: true,
-                     desc: "Capacité thermique du ballon — influence la cible adaptative et la durée de fenêtre" },
+                     desc: "Capacité thermique du ballon, avec influence sur la cible adaptative et la durée de fenêtre" },
 };
 
 const CONTROL_ORDER = ['enabled', 'target', 'min', 'solar_trigger', 'surplus_trigger', 'efficiency', 'tank'];
@@ -70,7 +70,7 @@ class CumulusSolaireCard extends HTMLElement {
 
   setConfig(config) {
     if (!config || !config.entity) {
-      throw new Error("L'entité sensor.cumulus_automation est requise");
+      throw new Error("Entité sensor.cumulus_automation requise");
     }
     // Merge controls
     const userControls = config.controls || {};
@@ -167,7 +167,7 @@ class CumulusSolaireCard extends HTMLElement {
 
           <div class="forecast">
             <div class="forecast-title">
-              <span>Production solaire — aujourd'hui</span>
+              <span>Production solaire du jour</span>
               <span class="forecast-title-right">
                 <span class="forecast-max" id="forecastMax"></span>
                 <span class="forecast-stale" id="forecastStale"></span>
@@ -428,44 +428,44 @@ class CumulusSolaireCard extends HTMLElement {
 
     if (a.manual_hold_active) {
       icon = 'mdi:hand-back-right';
-      why = 'Commande manuelle détectée — automatisation en pause';
+      why = 'Commande manuelle détectée, automatisation en pause';
       accentVar = '#8e24aa';
     } else if (a.legionella_blocked) {
       icon = 'mdi:alert-octagon-outline';
-      why = 'Anti-légionelle forcé — le thermostat mécanique semble couper avant 62°C';
+      why = 'Anti-légionelle forcé, thermostat mécanique probablement coupé avant 62°C';
       accentVar = '#e53935';
     } else if (a.degraded_sonde) {
       icon = 'mdi:thermometer-off';
-      why = 'Sonde HS — mode dégradé (solaire / anti-injection uniquement)';
+      why = 'Sonde HS, mode dégradé (solaire / anti-injection uniquement)';
       accentVar = '#e53935';
     } else if (a.legionella_critical) {
       icon = 'mdi:bacteria';
-      why = 'Cycle anti-légionelle critique — on force la chauffe';
+      why = 'Cycle anti-légionelle critique, chauffe forcée';
       accentVar = '#e53935';
     } else if (a.legionella_critical_pending) {
       icon = 'mdi:bacteria';
-      why = 'Anti-légionelle critique — chauffe planifiée aux heures creuses';
+      why = 'Anti-légionelle critique, chauffe planifiée aux heures creuses';
       accentVar = '#fb8c00';
     } else if (a.legionella_due) {
       icon = 'mdi:bacteria-outline';
-      why = 'Cycle anti-légionelle à programmer — cible remontée à 62°C';
+      why = 'Cycle anti-légionelle à programmer, cible remontée à 62°C';
       accentVar = '#fb8c00';
     } else if (a.solar_covers_target === true && a.desired !== 'on') {
       icon = 'mdi:solar-power-variant';
       const t = (a.solar_upstream_temp != null) ? `${Number(a.solar_upstream_temp).toFixed(0)}°C` : 'à la cible';
-      why = `Cumulus solaire amont à ${t} — l'appoint électrique reste en veille`;
+      why = `Cumulus solaire amont à ${t}, appoint électrique en veille`;
       accentVar = '#26a69a';
     } else if (mode === 'good') {
       icon = 'mdi:weather-sunny';
-      why = 'Demain ensoleillé — seuil solaire relevé, on attend un meilleur soleil';
+      why = 'Demain ensoleillé, seuil solaire relevé dans l\'attente d\'un meilleur soleil';
       accentVar = '#43a047';
     } else if (mode === 'poor') {
       icon = 'mdi:weather-cloudy';
-      why = 'Demain faible — seuil solaire abaissé, on capte le moindre soleil';
+      why = 'Demain faible, seuil solaire abaissé pour la captation du moindre soleil';
       accentVar = '#1e88e5';
     } else if (mode === 'mixed') {
       icon = 'mdi:weather-partly-cloudy';
-      why = 'Demain moyen — seuil solaire standard';
+      why = 'Demain moyen, seuil solaire standard';
       accentVar = '#fb8c00';
     } else {
       icon = 'mdi:strategy';
@@ -624,7 +624,7 @@ class CumulusSolaireCard extends HTMLElement {
       { label: 'Sonde température',
         // Ancien flow : sonde HS = état figé (terminal). Flow v3+ : simple drapeau.
         cond: !tempOk && a.degraded_sonde === undefined,
-        note: tempOk ? 'OK' : 'HS — mode dégradé',
+        note: tempOk ? 'OK' : 'HS, mode dégradé',
         warn: !tempOk },
       { label: 'Anti-injection',
         cond: antiInj === true,
@@ -1835,8 +1835,8 @@ class CumulusSolaireCardEditor extends HTMLElement {
   _label(schema) {
     const labels = {
       entity:                   'Entité cumulus',
-      forecast_entity:          'Entité prévisions Solcast — aujourd\'hui',
-      forecast_entity_tomorrow: 'Entité prévisions Solcast — demain',
+      forecast_entity:          'Entité prévisions Solcast du jour',
+      forecast_entity_tomorrow: 'Entité prévisions Solcast de demain',
       show_settings:            'Panneau de réglages',
       controls_section:         'Contrôles',
     };
@@ -1850,10 +1850,10 @@ class CumulusSolaireCardEditor extends HTMLElement {
   _helper(schema) {
     if (schema.name === 'entity') return 'sensor.cumulus_automation ou équivalent';
     if (schema.name === 'forecast_entity') return 'Prévisions Solcast pour aujourd\'hui';
-    if (schema.name === 'forecast_entity_tomorrow') return 'Optionnel — affiche la courbe de demain';
+    if (schema.name === 'forecast_entity_tomorrow') return 'Optionnel, pour la courbe de demain';
     if (schema.name && schema.name.startsWith('ctrl_')) {
       const def = DEFAULT_CONTROLS[schema.name.slice(5)];
-      return def ? `Défaut : ${def.entity} — vide pour masquer` : undefined;
+      return def ? `Défaut : ${def.entity}, vide pour masquer` : undefined;
     }
     return undefined;
   }

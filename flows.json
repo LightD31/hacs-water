@@ -126,7 +126,7 @@
         "type": "comment",
         "z": "ea320b91f27070db",
         "name": "📡 Déclencheurs",
-        "info": "Tous ces événements déclenchent une réévaluation complète.",
+        "info": "Réévaluation complète à chaque événement.",
         "x": 140,
         "y": 180,
         "wires": []
@@ -136,7 +136,7 @@
         "type": "comment",
         "z": "ea320b91f27070db",
         "name": "🔍 Lecture & Calculs (pipeline)",
-        "info": "Le message traverse 5 étapes atomiques avant l'arbre de décision.",
+        "info": "5 étapes atomiques avant l'arbre de décision.",
         "x": 460,
         "y": 180,
         "wires": []
@@ -146,7 +146,7 @@
         "type": "comment",
         "z": "ea320b91f27070db",
         "name": "🌳 Arbre de décision (priorité ↓)",
-        "info": "Chaque switch traite une priorité. Sortie 1 = continuer, Sortie 2 = action terminale.",
+        "info": "Une priorité par switch. Sortie 1, continuation. Sortie 2, action terminale.",
         "x": 1720,
         "y": 180,
         "wires": []
@@ -750,7 +750,7 @@
                 "t": "set",
                 "p": "reason",
                 "pt": "msg",
-                "to": "Cumulus solaire ≥ cible + marge — appoint électrique inutile",
+                "to": "Cumulus solaire ≥ cible + marge, appoint électrique inutile",
                 "tot": "str"
             }
         ],
@@ -858,7 +858,7 @@
                 "t": "set",
                 "p": "reason",
                 "pt": "msg",
-                "to": "Automatisation désactivée — aucune commande envoyée",
+                "to": "Automatisation désactivée, aucune commande envoyée",
                 "tot": "str"
             }
         ],
@@ -1448,7 +1448,7 @@
         "z": "ea320b91f27070db",
         "g": "2cb0a37db48d957c",
         "name": "Alertes ?",
-        "func": "// === Alertes HA (persistent_notification) ===\n// Une notification par épisode, anti-spam via contexte persistant.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst out = [];\nconst now = Date.now();\n\n// 1. Sonde HS depuis ≥ 2 h (une notif par épisode)\nif ((msg.sondeDownHours || 0) >= 2) {\n    if (!getF('notifSondeDown')) {\n        setF('notifSondeDown', true);\n        out.push({ payload: {\n            notification_id: 'cumulus_sonde_hs',\n            title: 'Cumulus : sonde température HS',\n            message: 'Sonde indisponible depuis ' + msg.sondeDownHours\n                + ' h. Mode dégradé actif (solaire / anti-injection uniquement).'\n        }});\n    }\n} else if (msg.tempAvailable) {\n    setF('notifSondeDown', false);\n}\n\n// 2. Cycle anti-légionelle forcé malgré un thermostat mécanique qui semble coupé\nif (msg.legionellaBlocked) {\n    const last = getF('notifLegioBlockedAt') || 0;\n    if (now - last > 24 * 3600 * 1000) {\n        setF('notifLegioBlockedAt', now);\n        out.push({ payload: {\n            notification_id: 'cumulus_legio_blocked',\n            title: 'Cumulus : anti-légionelle forcé malgré thermostat coupé',\n            message: msg.daysSinceHighTemp + ' j sans 60°C. Le relais reste forcé mais le '\n                + 'thermostat mécanique semble couper avant la cible. Vérifier son réglage (≥ 62°C nécessaire).'\n        }});\n    }\n}\n\nif (out.length === 0) return null;\nreturn [out];",
+        "func": "// === Alertes HA (persistent_notification) ===\n// Une notification par épisode, anti-spam via contexte persistant.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst out = [];\nconst now = Date.now();\n\n// 1. Sonde HS depuis ≥ 2 h (une notif par épisode)\nif ((msg.sondeDownHours || 0) >= 2) {\n    if (!getF('notifSondeDown')) {\n        setF('notifSondeDown', true);\n        out.push({ payload: {\n            notification_id: 'cumulus_sonde_hs',\n            title: 'Cumulus : sonde température HS',\n            message: 'Sonde indisponible depuis ' + msg.sondeDownHours\n                + ' h. Mode dégradé actif (solaire / anti-injection uniquement).'\n        }});\n    }\n} else if (msg.tempAvailable) {\n    setF('notifSondeDown', false);\n}\n\n// 2. Cycle anti-légionelle forcé malgré un thermostat mécanique qui semble coupé\nif (msg.legionellaBlocked) {\n    const last = getF('notifLegioBlockedAt') || 0;\n    if (now - last > 24 * 3600 * 1000) {\n        setF('notifLegioBlockedAt', now);\n        out.push({ payload: {\n            notification_id: 'cumulus_legio_blocked',\n            title: 'Cumulus : anti-légionelle forcé malgré thermostat coupé',\n            message: msg.daysSinceHighTemp + ' j sans 60°C. Relais forcé malgré thermostat mécanique probablement coupé avant la cible. Réglage à vérifier (62°C minimum nécessaire).'\n        }});\n    }\n}\n\nif (out.length === 0) return null;\nreturn [out];",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,

@@ -1,20 +1,20 @@
 # Cumulus Solaire Card
 
-Carte Lovelace dédiée à l'automatisation Node-RED **Cumulus Solaire** (V3+). Pensée pour exploiter chaque attribut exposé par `sensor.cumulus_automation` en un seul coup d'œil — état courant, température, fenêtre solaire optimale, anti-injection, anti-Legionella, fraîcheur Solcast.
+Carte Lovelace dédiée à l'automatisation Node-RED **Cumulus Solaire** (V3+). Pensée pour exploiter chaque attribut exposé par `sensor.cumulus_automation` en un seul coup d'œil : état courant, température, fenêtre solaire optimale, anti-injection, anti-Legionella, fraîcheur Solcast.
 
 ![preview](docs/preview.png)
 
 ## Ce qu'elle affiche
 
-- **Hero** — icône + titre adaptés à l'état avec priorité : automatisation désactivée → pause manuelle → Legionella forcée (thermostat suspect) → Legionella critique → Legionella en attente HC → anti-injection (utile) → Legionella due → Solcast périmé → forçage → chauffe → **solaire amont** (eau déjà fournie à la cible par le cumulus solaire) → cible atteinte → veille. L'icône pulse et la barre d'accent en haut shimmer quand le cumulus chauffe activement.
+- **Hero** : icône et titre adaptés à l'état, par priorité : automatisation désactivée → pause manuelle → Legionella forcée (thermostat suspect) → Legionella critique → Legionella en attente HC → anti-injection (utile) → Legionella due → Solcast périmé → forçage → chauffe → **solaire amont** (eau déjà fournie à la cible par le cumulus solaire) → cible atteinte → veille. Icône et barre d'accent (haut) en pulsation/shimmer pendant la chauffe active du cumulus.
 - **Cadran 270°** de la température de l'eau, avec dégradé bleu → ambre → rouge et repères colorés pour `min_temp`, `forcage_threshold`, `stop_temp` (arrêt du forçage), `reach_for` et le seuil 60°C anti-Legionella (visible uniquement quand pertinent).
-- **Courbe Solcast** du jour avec lissage Bézier, bande verte sur la fenêtre optimale (`window_start` / `window_end`, figée pendant un forçage), curseur "maintenant" pointillé. L'âge Solcast s'affiche en rouge si périmé (>6h).
-- **Pastilles** : production solaire instantanée, surplus potentiel (anti-injection verte seulement quand elle *sert* — `anti_injection_useful`), jours depuis le dernier 60°C, température du **cumulus solaire amont** (`solar_upstream_temp`, teal quand elle couvre déjà la cible), et "Thermostat coupé" quand le thermostat mécanique a ouvert le circuit.
-- **Chemin de décision** (panneau ℹ de la bande stratégie) — les 9 priorités du flow affichées en échelle : règles passées ✓, règle qui a tranché →, règles court-circuitées grisées, avec les valeurs comparées (surplus/seuil, temp/cible, solaire amont/seuil, solaire/seuil effectif).
+- **Courbe Solcast** du jour avec lissage Bézier, bande verte sur la fenêtre optimale (`window_start` / `window_end`, figée pendant un forçage), curseur "maintenant" pointillé. Âge Solcast en rouge si périmé (>6h).
+- **Pastilles** : production solaire instantanée, surplus potentiel (anti-injection verte uniquement si utile, `anti_injection_useful`), jours depuis le dernier 60°C, température du **cumulus solaire amont** (`solar_upstream_temp`, teal en cas de couverture déjà de la cible), et « Thermostat coupé » en cas d'ouverture du circuit par le thermostat mécanique.
+- **Chemin de décision** (panneau ℹ de la bande stratégie) : 9 priorités du flow affichées en échelle, règles passées ✓, règle décisive →, règles court-circuitées grisées, avec les valeurs comparées (surplus/seuil, temp/cible, solaire amont/seuil, solaire/seuil effectif).
 
 ## Pré-requis
 
-Le flow Node-RED doit être déployé et avoir tourné au moins une fois pour exposer ces attributs sur `sensor.cumulus_automation` :
+Flow Node-RED déployé et exécuté au moins une fois, pour l'exposition de ces attributs sur `sensor.cumulus_automation` :
 
 ```
 enabled, desired, current_switch,
@@ -27,8 +27,8 @@ window_start, window_end, window_avg_w, in_window, is_forcing,
 window_skipped_reason, tomorrow_mode
 ```
 
-Avec le flow **V3** (juin 2026), la carte exploite en plus (tous optionnels — la carte
-retombe sur le comportement précédent s'ils sont absents) :
+Avec le flow **V3** (juin 2026), attributs supplémentaires exploités par la carte (tous
+optionnels, retour au comportement précédent en leur absence) :
 
 ```
 anti_injection_useful, thermostat_tripped,
@@ -39,59 +39,59 @@ stop_temp, dt_forcing, tank_volume_l,
 effective_trigger
 ```
 
-Avec le flow **« solaire amont »** (juin 2026), la carte exploite en plus :
+Avec le flow **« solaire amont »** (juin 2026), attributs supplémentaires exploités par la carte :
 
 ```
 solar_upstream_temp, solar_upstream_available,
 solar_covers_target, solar_sufficient_threshold, solar_sufficient_margin
 ```
 
-Pour la courbe Solcast, l'attribut `detailedForecast` du capteur Solcast aujourd'hui est lu directement.
+Pour la courbe Solcast, lecture directe de l'attribut `detailedForecast` du capteur Solcast du jour.
 
 ## Cumulus solaire en amont (préchauffe en série)
 
-Si un cumulus **solaire** est plombé **en série, en amont** du cumulus électrique
-(l'eau froide traverse d'abord le ballon solaire, puis le ballon électrique), il
-n'y a aucune raison de chauffer électriquement quand le ballon solaire fournit
-déjà l'eau à la cible.
+Cumulus **solaire** plombé **en série, en amont** du cumulus électrique
+(eau froide passant d'abord par le ballon solaire, puis par le ballon électrique) :
+chauffage électrique inutile dès fourniture de l'eau à la cible par le ballon
+solaire.
 
-Le flow lit la sonde du ballon solaire (`sensor.temp_cumulus_solaire_temperature`)
-et, à une priorité **inférieure** à l'anti-injection (surplus) et à
-l'anti-légionelle, coupe l'appoint électrique dès que :
+Lecture de la sonde du ballon solaire (`sensor.temp_cumulus_solaire_temperature`)
+par le flow et, à une priorité **inférieure** à l'anti-injection (surplus) et à
+l'anti-légionelle, coupure de l'appoint électrique dès que :
 
 ```
 temp_cumulus_solaire ≥ cible_effective (reach_for) + marge
 ```
 
-- La **marge** (`solar_sufficient_margin`, défaut **3 °C**) couvre la
-  stratification du ballon solaire et les pertes en ligne — l'eau n'arrive
-  jamais tiède au robinet. Réglable via la variable d'environnement Node-RED
+- **Marge** (`solar_sufficient_margin`, défaut **3 °C**) pour la
+  stratification du ballon solaire et les pertes en ligne, sans eau tiède
+  au robinet. Réglable via la variable d'environnement Node-RED
   `SOLAR_SUFFICIENT_MARGIN`.
-- **L'anti-injection est conservée** : un surplus réseau qui dure force quand
-  même la chauffe (on stocke l'énergie gratuite), priorité supérieure. Aucun
-  plafond logiciel : tant que le surplus est actif, la chauffe continue même
-  au-delà de `reach_for` (le cumulus devient une batterie thermique gratuite),
-  jusqu'à ce que le thermostat mécanique du ballon coupe lui-même le circuit.
-- **L'anti-légionelle est conservée** : le cycle critique force la chauffe ; et
-  comme le seuil se base sur `reach_for` (relevé à 62 °C quand la légionelle est
-  due), la coupure « solaire amont » ne court-circuite pas le cycle.
-- Si la sonde solaire est indisponible, la règle ne s'applique pas : le flow
-  retombe sur son comportement habituel.
+- **Anti-injection conservée** : surplus réseau durable, chauffe forcée quand
+  même (stockage de l'énergie gratuite), priorité supérieure. Aucun
+  plafond logiciel : chauffe au-delà de `reach_for` en cas de surplus actif
+  (cumulus en batterie thermique gratuite), jusqu'à coupure du circuit par
+  le thermostat mécanique du ballon lui-même.
+- **Anti-légionelle conservée** : chauffe forcée en cycle critique. Seuil
+  basé sur `reach_for` (relevé à 62 °C en cas de légionelle due), donc pas
+  de court-circuit du cycle par la coupure « solaire amont ».
+- Sonde solaire indisponible : règle non appliquée, retour au comportement
+  habituel du flow.
 
 ## Installation via HACS (custom repository)
 
 1. HACS → Frontend → menu ⋮ en haut à droite → **Custom repositories**.
 2. URL : `https://github.com/USER/cumulus-solaire-card`, catégorie **Lovelace**.
-3. Installer **Cumulus Solaire Card** depuis la liste.
-4. Recharger le navigateur (Ctrl+F5). HACS ajoute automatiquement la ressource Lovelace.
+3. Installation de **Cumulus Solaire Card** depuis la liste.
+4. Rechargement du navigateur (Ctrl+F5). Ajout automatique de la ressource Lovelace par HACS.
 
 ## Installation manuelle
 
-1. Copier `cumulus-solaire-card.js` dans `/config/www/` (ou un sous-dossier).
-2. Ajouter la ressource Lovelace : Settings → Dashboards → menu ⋮ → **Resources** → **Add resource**.
+1. Copie de `cumulus-solaire-card.js` dans `/config/www/` (ou un sous-dossier).
+2. Ajout de la ressource Lovelace : Settings → Dashboards → menu ⋮ → **Resources** → **Add resource**.
    - URL : `/local/cumulus-solaire-card.js`
    - Type : `JavaScript Module`
-3. Recharger le navigateur.
+3. Rechargement du navigateur.
 
 ## Utilisation
 
@@ -115,30 +115,30 @@ forecast_entity: sensor.solcast_pv_forecast_previsions_pour_aujourd_hui
 | Clé | Type | Défaut | Description |
 |---|---|---|---|
 | `entity` | string | **requis** | L'entité produite par le flow Node-RED |
-| `forecast_entity` | string | `sensor.solcast_pv_forecast_previsions_pour_aujourd_hui` | Capteur Solcast pour la courbe du jour. Doit exposer `detailedForecast` en attribut. |
+| `forecast_entity` | string | `sensor.solcast_pv_forecast_previsions_pour_aujourd_hui` | Capteur Solcast pour la courbe du jour, avec attribut `detailedForecast` requis. |
 | `show_settings` | string/bool | `'collapsible'` | `'collapsible'` (défaut, repliable, fermé au départ) · `'expanded'` (toujours ouvert) · `false` (masqué) |
 | `controls` | object | (voir ci-dessous) | Mapping des helpers HA contrôlés par les sliders et le toggle |
 
-Le champ Solcast affiché (`pv_estimate`, `pv_estimate10`, `pv_estimate90`) suit l'attribut `forecast_field` exposé par le sensor cumulus, donc le sélecteur Solcast reste maître.
+Champ Solcast affiché (`pv_estimate`, `pv_estimate10`, `pv_estimate90`) aligné sur l'attribut `forecast_field` exposé par le sensor cumulus, sélecteur Solcast maître.
 
 ### Panneau réglages
 
-Le panneau "Réglages" (icône ⚙ en bas de la carte, repliable) expose six contrôles, chacun pilotant un helper HA :
+Panneau « Réglages » (icône ⚙ en bas de la carte, repliable) : six contrôles, chacun pilotant un helper HA :
 
 | Clé `controls` | Type | Helper par défaut | Notes |
 |---|---|---|---|
-| `enabled` | toggle | `input_boolean.cumulus_automation_enabled` | Active/désactive l'automatisation entière |
+| `enabled` | toggle | `input_boolean.cumulus_automation_enabled` | Activation/désactivation de l'automatisation entière |
 | `target` | slider | `input_number.cumulus_target_temp` | Cible normale (°C) |
-| `min` | slider | `input_number.cumulus_min_temp` | Seuil bas, déclenche le forçage (°C) |
-| `solar_trigger` | slider | `input_number.cumulus_solar_trigger` | Seuil de production solaire (W). Affiche la valeur effective si modulée par `tomorrow_mode`. |
+| `min` | slider | `input_number.cumulus_min_temp` | Seuil bas, déclenchement du forçage (°C) |
+| `solar_trigger` | slider | `input_number.cumulus_solar_trigger` | Seuil de production solaire (W), avec valeur effective affichée si modulée par `tomorrow_mode` |
 | `surplus_trigger` | slider | `input_number.cumulus_surplus_trigger` | Seuil anti-injection (W) |
 | `efficiency` | slider | `input_number.cumulus_efficiency` | Rendement du chauffage (0–1 ou 0–100 %) |
-| `tank` | slider | `input_number.cumulus_tank_volume` | Volume du ballon (L). Optionnel — la ligne est masquée si l'helper n'existe pas. |
+| `tank` | slider | `input_number.cumulus_tank_volume` | Volume du ballon (L). Optionnel, ligne masquée en l'absence de l'helper. |
 
-Chaque slider affiche une courte description de son **impact réel** sur la décision
-(ex. "Plancher absolu — en dessous, forçage dans la meilleure fenêtre solaire").
+Chaque slider avec courte description de son **impact réel** sur la décision
+(ex. « Plancher absolu, avec forçage dans la meilleure fenêtre solaire en dessous »).
 
-Les sliders lisent automatiquement `min`, `max`, `step`, `unit_of_measurement` depuis l'helper HA — pas besoin de les redéfinir dans la carte. Les changements sont envoyés à HA après 250 ms de pause (debounce), pour éviter de spammer le bus pendant qu'on déplace le curseur.
+Lecture automatique de `min`, `max`, `step`, `unit_of_measurement` depuis l'helper HA par les sliders, pas besoin de les redéfinir dans la carte. Envoi des changements à HA après 250 ms de pause (debounce), pour éviter de spammer le bus pendant le déplacement du curseur.
 
 Pour pointer un slider sur un helper différent :
 
@@ -156,7 +156,7 @@ Pour masquer entièrement le panneau :
 show_settings: false
 ```
 
-Pour qu'il soit toujours déplié (carte plus grande mais tout visible) :
+Pour un panneau toujours déplié (carte plus grande mais tout visible) :
 
 ```yaml
 show_settings: expanded
@@ -164,12 +164,12 @@ show_settings: expanded
 
 ## Comportement des couleurs
 
-Toutes les couleurs d'état suivent une palette cohérente :
+Palette cohérente pour toutes les couleurs d'état :
 
 | État | Couleur | Quand |
 |---|---|---|
 | ✋ Pause manuelle | Violet `#8e24aa` | `manual_hold_active = true` |
-| 🛑 Legionella forcée (thermostat suspect) | Rouge `#e53935` | `legionella_blocked = true` (thermostat mécanique semble couper avant 62°C — relais forcé quand même) |
+| 🛑 Legionella forcée (thermostat suspect) | Rouge `#e53935` | `legionella_blocked = true` (thermostat mécanique probablement coupé avant 62°C, relais forcé quand même) |
 | 🦠 Legionella critique | Rouge `#e53935` | `legionella_critical = true` |
 | ⏳ Legionella en attente | Orange `#fb8c00` | `legionella_critical_pending = true` (chauffe planifiée aux heures creuses) |
 | ⚡ Anti-injection | Vert `#43a047` | `anti_injection_useful = true` (fallback : `anti_injection_active`) |
@@ -177,22 +177,22 @@ Toutes les couleurs d'état suivent une palette cohérente :
 | 📡 Solcast périmé | Gris `#757575` | `solcast_stale = true` (sans forçage) |
 | 🔥 Forçage | Orange `#fb8c00` | `is_forcing = true` |
 | 💧 Chauffe | Vert `#43a047` | `desired = on` (autres cas) |
-| ☀️ Solaire amont | Teal `#26a69a` | `solar_covers_target = true` (le cumulus solaire fournit déjà l'eau à la cible) |
+| ☀️ Solaire amont | Teal `#26a69a` | `solar_covers_target = true` (cumulus solaire fournissant déjà l'eau à la cible) |
 | ✅ Cible atteinte | Bleu `#1e88e5` | `water_temp >= reach_for` |
 | 💤 Veille | Bleu `#1e88e5` | par défaut |
 | 🤖 Désactivée | Gris `#9e9e9e` | `enabled = false` |
 
-L'icône pulse et la barre d'accent shimmer quand un état "actif" est en cours (anti-injection, Legionella critique, forçage, chauffe).
+Pulsation de l'icône et shimmer de la barre d'accent pendant un état « actif » (anti-injection, Legionella critique, forçage, chauffe).
 
 ## Interaction
 
-Tap sur la carte → ouvre la pop-up "more-info" de `sensor.cumulus_automation` (tous les attributs visibles).
+Tap sur la carte → pop-up « more-info » de `sensor.cumulus_automation` (tous les attributs visibles).
 
 ## Compatibilité
 
 - Home Assistant 2023.1+
-- Aucune dépendance externe (utilise `ha-icon` fourni par HA)
-- Responsive : empile dial + courbe verticalement sous 520px
+- Aucune dépendance externe (`ha-icon` fourni par HA)
+- Responsive : empilement vertical dial + courbe sous 520 px
 
 ## Licence
 
