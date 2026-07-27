@@ -668,5 +668,32 @@ scenario('33. CLIM_GROUPS absent : repli complet sur l\'estimation', () => {
     ENV.CLIM_GROUPS = saved;
 });
 
+scenario('34. Aucun attribut null : contrainte du schéma du nœud sensor', () => {
+    // Le nœud ha-sensor valide chaque message : les valeurs d'attribut peuvent
+    // être chaîne, nombre, booléen, objet ou tableau — mais PAS null. Un seul
+    // attribut nul fait échouer le message entier, le nœud affiche « validation
+    // error » et l'entité n'est jamais mise à jour. Ce contrôle balaie les
+    // situations qui produisent naturellement des valeurs absentes.
+    const cas = [
+        ['repos, sans sonde extérieure', makeCtx(states({}), 200), 5],
+        ['une unité en marche', makeCtx(states({}), 1000), 10],
+        ['sonde extérieure présente', makeCtx(states({ outdoor: 30 }), 1000), 10],
+        ['automatisation désactivée', makeCtx(states({ enabled: 'off' }), 1000), 3],
+        ['disjoncteur coupé', makeCtx(states({ breakers: { 'Clim Nord': 'off' } }), 1000), 6],
+        ['cumulus absent', makeCtx(states({ noCumulus: true }), 1000), 6],
+        ['hors saison', makeCtx(states({ outdoor: 20, temps: [21, 21, 21, 21, 21] }), 1000), 6],
+    ];
+    for (const [label, ctx, min] of cas) {
+        const m = run(ctx, min);
+        const bad = Object.keys(m.sensor.attributes)
+            .filter(k => m.sensor.attributes[k] === null
+                || m.sensor.attributes[k] === undefined);
+        check('aucun attribut null — ' + label, bad.length === 0, bad.join(', '));
+        // L'état doit rester une chaîne non vide (state : string/number/boolean requis)
+        check('état exploitable — ' + label,
+            typeof m.sensor.state === 'string' && m.sensor.state.length > 0, m.sensor.state);
+    }
+});
+
 console.log('\n=== ' + pass + ' assertions OK, ' + fail + ' échecs ===');
 process.exit(fail ? 1 : 0);

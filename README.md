@@ -345,6 +345,76 @@ Notifications HA : plus aucune température de pièce (≥ 2 h), unité injoigna
 (≥ 1 h), `sensor.cumulus_automation` introuvable, mode demandé absent de
 `hvac_modes`, disjoncteur coupé alors que du surplus reste disponible.
 
+### Débogage
+
+#### Lire le bon signal
+
+Deux symptômes visuellement proches, causes sans rapport :
+
+| Symptôme | Nature | Où chercher |
+|---|---|---|
+| **Triangle rouge** sur le nœud, avant Deploy | Configuration invalide dans l'éditeur (champ requis vide, nœud de config introuvable) | Ouvrir le nœud, le champ fautif est encadré de rouge |
+| **Carré rouge + « validation error at: <heure> »** sous le nœud | Statut d'exécution : le **message reçu** est refusé, à chaque message | Barre latérale Debug, et journal Node-RED |
+
+Le second cas ne se corrige pas dans la configuration du nœud : c'est le
+contenu du message qu'il faut regarder.
+
+#### Contrainte des attributs du nœud sensor
+
+Le nœud `ha-sensor` valide chaque message. Les valeurs d'attribut acceptées
+sont **chaîne, nombre, booléen, objet, tableau** — **jamais `null`**. Un seul
+attribut nul fait échouer le message **entier** : statut « validation error »,
+entité jamais mise à jour, et rien d'autre pour l'expliquer.
+
+C'est le piège principal ici, les valeurs absentes étant normales (sonde
+extérieure non configurée, aucune unité en marche, unité injoignable). Le nœud
+« Build sensor payload » **retire donc les clés nulles** avant d'émettre : côté
+Home Assistant, un attribut absent vaut « inconnu ». Le scénario 34 de la
+simulation verrouille cette contrainte sur sept situations.
+
+#### Voir passer les messages
+
+1. **Barre latérale Debug** (icône insecte). Sélecteur du haut sur
+   « all nodes » plutôt que « selected nodes », sinon les erreurs des autres
+   nœuds n'apparaissent pas.
+2. **Nœud debug temporaire** sur la sortie de « Build sensor payload », réglé
+   sur *complete msg object* : le payload exact envoyé au sensor devient
+   visible, attribut par attribut.
+3. **Nœud catch** déjà présent dans le flow : il attrape les erreurs de tous les
+   nœuds de l'onglet et les remonte en notification Home Assistant
+   (`clim_flow_error`), avec le nom du nœud fautif et le message d'origine,
+   anti-spam d'un quart d'heure.
+4. **Journal de l'add-on** : Home Assistant → Paramètres → Modules
+   complémentaires → Node-RED → onglet *Journal*. C'est là qu'atterrissent les
+   erreurs de module, les piles d'appel et les `node.warn` du flow.
+5. **Console du navigateur** (F12) pour les erreurs propres à l'éditeur.
+
+#### Isoler
+
+Le flow se coupe proprement en tronçons, chaque nœud `function` étant autonome :
+
+- Désactiver l'onglet entier (menu de l'onglet → *Disable*), puis réactiver et
+  observer un tronçon à la fois.
+- Débrancher le fil vers le nœud sensor : erreurs disparues, le problème est
+  dans le payload et non dans la décision.
+- Injecter à la main : un nœud `inject` branché sur « Lire capteurs & unités »
+  déclenche un cycle complet immédiatement, sans attendre le tick d'une minute.
+
+#### Rejouer hors de Home Assistant
+
+La simulation exécute les corps réels des nœuds `function` sur un registre
+d'états factice, sans rien déployer :
+
+```
+node tests/clim-flow-sim.js
+```
+
+Pour reproduire une situation précise, ajouter un scénario dans
+`tests/clim-flow-sim.js` : `states({ ... })` décrit les entités, `surplusBase`
+l'export disponible avant clim et cumulus, et le compteur réseau se recalcule
+seul à chaque tick. C'est le moyen le plus rapide de vérifier une hypothèse sur
+la décision sans toucher à l'installation.
+
 ### Simulation
 
 Harnais exécutant les corps réels des nœuds `function` du flow, sur horloge

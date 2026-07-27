@@ -2,6 +2,29 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.14.2] - 2026-07-27
+
+- **Correctif : « validation error » permanent sur `sensor.clim_automation`.**
+  Le nœud `ha-sensor` valide chaque message reçu : les valeurs d'attribut
+  peuvent être chaîne, nombre, booléen, objet ou tableau, mais **pas `null`**,
+  et un seul attribut nul fait échouer le message entier. Le payload en
+  contenait systématiquement deux à quatre (`outdoor_temp` sans sonde
+  extérieure configurée, `observed_draw_per_unit_w` quand rien ne tourne,
+  `shed_blocked_by` hors délestage différé), donc l'entité n'était jamais mise
+  à jour. Les clés nulles sont désormais retirées avant émission : côté Home
+  Assistant, un attribut absent vaut « inconnu ».
+- **Suppression de code mort** : attribut `clim_power_measured` et lecture de
+  `CLIM_POWER_SENSOR`, variable remplacée par `CLIM_GROUPS` en v1.14.0 et donc
+  toujours nulle.
+- **Simulation** : scénario 34, contrôle de l'absence de valeur nulle au premier
+  niveau des attributs sur sept situations produisant naturellement des valeurs
+  absentes, plus contrôle du type de l'état. 34 scénarios, 175 assertions.
+- **README** : section « Débogage », distinction entre erreur de validation de
+  l'éditeur (triangle rouge) et statut d'exécution (carré rouge horodaté),
+  contrainte des attributs, emplacements des journaux, méthode d'isolation.
+- Fichiers modifiés : `flows-clim.json`, `tests/clim-flow-sim.js`, `README.md`,
+  `CHANGELOG.md`.
+
 ## [v1.14.1] - 2026-07-27
 
 - **Correctif : erreur de validation sur `sensor.clim_automation` à l'import.**
