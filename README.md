@@ -138,16 +138,10 @@ entity: sensor.clim_automation
 leur ligne. Exemples dans `dashboard-clim-snippet.yaml`.
 
 > **Ressource Lovelace** : HACS ne télécharge **qu'un seul fichier** par dépôt
-> de plugin. Ce dépôt en livrant deux cartes, `hacs.json` utilise
-> `zip_release` : l'archive `hacs-water.zip` attachée à chaque release est
-> extraite dans `/config/www/community/hacs-water/`. Une ressource Lovelace est
-> donc à déclarer **par carte** :
->
-> - `/hacsfiles/hacs-water/cumulus-solaire-card.js`
-> - `/hacsfiles/hacs-water/clim-solaire-card.js`
->
-> toutes deux de type *JavaScript Module*. L'URL de la carte cumulus est
-> inchangée, le dossier d'installation restant le même.
+> de plugin, et déclare automatiquement une ressource pointant dessus. Les deux
+> cartes sont donc réunies dans `hacs-water.js`, fichier généré : **une seule
+> ressource, gérée par HACS**, aucune déclaration manuelle. Les deux cartes
+> apparaissent ensuite dans le sélecteur.
 
 ### Import dans Node-RED
 
@@ -503,42 +497,52 @@ partie du bouclage physique du harnais. Toute la décision vivant dans les nœud
 1. HACS → Frontend → menu ⋮ en haut à droite → **Custom repositories**.
 2. URL : `https://github.com/LightD31/hacs-water`, catégorie **Lovelace**.
 3. Installation de **Cumulus & Clim Solaire Cards** depuis la liste.
-4. Déclaration des ressources Lovelace, **une par carte** (Paramètres →
-   Tableaux de bord → ⋮ → Ressources), type *JavaScript Module* :
-   `/hacsfiles/hacs-water/cumulus-solaire-card.js` et
-   `/hacsfiles/hacs-water/clim-solaire-card.js`.
-5. Rechargement du navigateur (Ctrl+F5). Les bannières `CUMULUS-SOLAIRE-CARD` et
-   `CLIM-SOLAIRE-CARD` dans la console confirment le chargement des ressources.
+4. Rechargement du navigateur (Ctrl+F5).
+
+La ressource Lovelace est **gérée par HACS**, rien à déclarer à la main. Les
+deux cartes sont livrées dans un fichier unique et apparaissent toutes deux dans
+le sélecteur de cartes. Les bannières `CUMULUS-SOLAIRE-CARD` et
+`CLIM-SOLAIRE-CARD` dans la console du navigateur confirment le chargement.
+
+### Pourquoi un fichier unique
+
+HACS ne télécharge qu'un fichier par dépôt de plugin — son gestionnaire retourne
+dès le premier trouvé — **et** enregistre une ressource Lovelace construite sur
+le `filename` de `hacs.json` :
+
+```
+/hacsfiles/hacs-water/{filename}?hacstag=…
+```
+
+Une livraison par archive (`zip_release`) échoue donc doublement : HACS déclare
+l'archive elle-même comme module JavaScript, ressource inutilisable, et écrase
+au passage celle qui fonctionnait. `filename` doit désigner un vrai `.js`, d'où
+`hacs-water.js`, regroupant les deux cartes.
+
+Chaque source est encapsulée dans une IIFE lors de la génération : les deux
+cartes déclarent des constantes de même nom au premier niveau (`VERSION`,
+`MODES`, `esc`…), une concaténation brute échouerait sur « Identifier already
+declared ».
 
 ### Publication d'une release
 
-HACS ne télécharge qu'un seul fichier par dépôt de plugin. Les deux cartes
-voyagent donc dans une archive, déclarée par `zip_release` dans `hacs.json`, et
-**attachée à la release sous le nom exact du `filename`** — HACS cherche un
-asset portant ce nom et ne trouve rien sinon.
-
-Cet oubli étant facile et son symptôme peu parlant, la publication est
-automatisée (`.github/workflows/release.yml`) :
-
 ```
-git tag v1.17.0 && git push origin v1.17.0
+git tag v1.18.0 && git push origin v1.18.0
 ```
 
-Le workflow rejoue la simulation et les contrôles d'intégrité, construit
-l'archive, crée la release avec les notes tirées de la section correspondante du
-CHANGELOG, y attache l'archive, puis **vérifie que l'asset est bien présent**.
+Le workflow (`.github/workflows/release.yml`) rejoue la simulation et les
+contrôles d'intégrité, vérifie que `hacs-water.js` est à jour avec ses sources,
+crée la release avec les notes tirées de la section correspondante du CHANGELOG
+et y attache le fichier. Une release publiée à la main déclenche le même
+workflow, qui se contente alors d'attacher le fichier sans toucher aux notes.
 
-Une release publiée à la main depuis l'interface GitHub déclenche le même
-workflow : il se contente alors d'attacher l'archive, sans toucher aux notes
-rédigées. `workflow_dispatch` permet de rejouer la publication d'un tag existant.
-
-Construction locale de l'archive, pour vérification :
+Régénération locale après modification d'une carte :
 
 ```
-./tools/build-hacs-zip.sh
+node tools/build-hacs-bundle.js
 ```
 
-L'archive n'est pas versionnée dans le dépôt.
+Le fichier généré est versionné, et la CI échoue s'il diverge de ses sources.
 
 ### Contrôles automatiques
 
@@ -546,13 +550,14 @@ L'archive n'est pas versionnée dans le dépôt.
 
 - `node tests/clim-flow-sim.js` — 34 scénarios, 175 assertions ;
 - `node tools/validate-repo.js` — invariants du dépôt, chacun correspondant à un
-  défaut réellement rencontré : manifeste HACS cohérent (`zip_release` +
-  `filename` en `.zip`), intégrité des deux graphes Node-RED (identifiants
-  uniques, `wires` et groupes résolus), **absence de collision d'identifiants
-  entre les deux flows** (cause du nœud serveur dupliqué à l'import), nœuds
-  `climate` sans entité en dur, cartes enregistrées et déclarées, archive
-  contenant bien toutes les cartes ;
-- construction de l'archive.
+  défaut réellement rencontré : **`filename` désignant un `.js` et non une
+  archive** (une archive déclarée comme ressource Lovelace cassait les deux
+  cartes), intégrité des deux graphes Node-RED, **absence de collision
+  d'identifiants entre les deux flows** (cause du nœud serveur dupliqué à
+  l'import), nœuds `climate` sans entité en dur, cartes enregistrées et
+  déclarées, fichier livré contenant bien toutes les cartes et à jour avec
+  elles ;
+- vérification que le fichier livré est à jour.
 
 ## Installation manuelle
 

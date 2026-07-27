@@ -2,6 +2,35 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.18.0] - 2026-07-27
+
+- **Correctif : les deux cartes disparues de Home Assistant après la v1.17.0.**
+  HACS ne se contente pas de télécharger un fichier, il **déclare aussi une
+  ressource Lovelace** construite sur le `filename` de `hacs.json` :
+  `/hacsfiles/hacs-water/{filename}?hacstag=…`. Avec `zip_release`,
+  `filename` valant `hacs-water.zip`, HACS enregistrait l'archive elle-même
+  comme module JavaScript — ressource inutilisable — **et écrasait celle de la
+  carte cumulus**, jusque-là fonctionnelle. Les deux cartes devenaient
+  introuvables dans le sélecteur.
+- **Livraison par fichier unique.** `zip_release` abandonné,
+  `filename: hacs-water.js` : les deux cartes sont réunies par
+  `tools/build-hacs-bundle.js`, chaque source encapsulée dans une IIFE (elles
+  déclarent des constantes de même nom au premier niveau, une concaténation
+  brute échouerait). La ressource Lovelace redevient gérée par HACS, sans
+  déclaration manuelle, et les deux cartes apparaissent dans le sélecteur.
+  Vérifié en navigateur : chargé comme module ES, le fichier enregistre les
+  quatre éléments (deux cartes, deux éditeurs) et alimente `window.customCards`,
+  sans erreur.
+- **Fichier généré versionné**, avec contrôle de fraîcheur en CI
+  (`build-hacs-bundle.js --check`) : il ne peut plus diverger de ses sources.
+- **`validate-repo.js`** : le contrôle du manifeste vérifie désormais que
+  `filename` désigne un `.js` et refuse `zip_release`, la cause exacte de cette
+  panne.
+- Fichiers ajoutés : `hacs-water.js` (généré), `tools/build-hacs-bundle.js`.
+  Fichiers supprimés : `tools/build-hacs-zip.sh`. Fichiers modifiés :
+  `hacs.json`, `tools/validate-repo.js`, `.github/workflows/ci.yml`,
+  `.github/workflows/release.yml`, `README.md`, `CHANGELOG.md`.
+
 ## [v1.17.0] - 2026-07-27
 
 - **Publication de release automatisée** (`.github/workflows/release.yml`).

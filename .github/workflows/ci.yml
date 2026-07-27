@@ -28,5 +28,5 @@ jobs:
       - name: Intégrité du dépôt
         run: node tools/validate-repo.js
 
-      - name: Construction de l'archive HACS
-        run: ./tools/build-hacs-zip.sh
+      - name: Fichier livré à HACS, à jour
+        run: node tools/build-hacs-bundle.js --check

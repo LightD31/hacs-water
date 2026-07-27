@@ -1,6 +1,5 @@
 {
   "name": "Cumulus & Clim Solaire Cards",
   "render_readme": true,
-  "filename": "hacs-water.zip",
-  "zip_release": true
+  "filename": "hacs-water.js"
 }

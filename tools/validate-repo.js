@@ -17,14 +17,21 @@ const section = (m) => console.log('\n' + m);
 const readJson = (f) => JSON.parse(fs.readFileSync(path.join(root, f), 'utf8'));
 
 // --- 1. Manifeste HACS ------------------------------------------------------
+// HACS ne télécharge qu'un fichier par dépôt ET déclare automatiquement une
+// ressource Lovelace pointant dessus. Le fichier désigné doit donc être un vrai
+// module JavaScript : une archive y était enregistrée telle quelle et cassait
+// les deux cartes (v1.17.0).
 section('Manifeste HACS');
 const hacs = readJson('hacs.json');
-if (hacs.zip_release === true) ok('zip_release actif');
-else ko('zip_release absent : HACS ne téléchargerait qu\'une seule carte');
-if (typeof hacs.filename === 'string' && hacs.filename.endsWith('.zip')) {
+if (hacs.zip_release) {
+    ko('zip_release actif : HACS déclarerait l\'archive comme ressource Lovelace');
+} else {
+    ok('pas de zip_release');
+}
+if (typeof hacs.filename === 'string' && hacs.filename.endsWith('.js')) {
     ok(`filename = ${hacs.filename}`);
 } else {
-    ko('filename doit être une archive .zip quand zip_release est actif');
+    ko('filename doit désigner un fichier .js, il devient l\'URL de la ressource');
 }
 
 // --- 2. Flows : intégrité du graphe ----------------------------------------
@@ -87,7 +94,8 @@ hardcoded.length === 0
 
 // --- 5. Cartes : syntaxe et enregistrement ---------------------------------
 section('Cartes Lovelace');
-for (const card of fs.readdirSync(root).filter((f) => f.endsWith('-card.js'))) {
+const cards = fs.readdirSync(root).filter((f) => f.endsWith('-card.js')).sort();
+for (const card of cards) {
     const src = fs.readFileSync(path.join(root, card), 'utf8');
     try {
         new Function(src);
@@ -101,14 +109,36 @@ for (const card of fs.readdirSync(root).filter((f) => f.endsWith('-card.js'))) {
     else ko(`${card} : absente de window.customCards`);
 }
 
-// --- 6. L'archive livre bien toutes les cartes -----------------------------
-section('Contenu de l\'archive HACS');
-const cards = fs.readdirSync(root).filter((f) => f.endsWith('-card.js')).sort();
-const script = fs.readFileSync(path.join(root, 'tools/build-hacs-zip.sh'), 'utf8');
-const missing = cards.filter((c) => !script.includes(c));
-missing.length === 0
-    ? ok(`${cards.length} carte(s) archivée(s) : ${cards.join(', ')}`)
-    : ko(`carte(s) absente(s) du script d'archive : ${missing.join(', ')}`);
+// --- 6. Le fichier livré contient bien toutes les cartes -------------------
+section('Fichier livré à HACS');
+const bundlePath = path.join(root, hacs.filename || '');
+if (!hacs.filename || !fs.existsSync(bundlePath)) {
+    ko(`${hacs.filename} absent du dépôt`);
+} else {
+    const bundle = fs.readFileSync(bundlePath, 'utf8');
+    try {
+        new Function(bundle);
+        ok(`${hacs.filename} : syntaxe`);
+    } catch (e) {
+        ko(`${hacs.filename} : ${e.message}`);
+    }
+    for (const card of cards) {
+        const tag = card.replace(/\.js$/, '');
+        bundle.includes(`'${tag}'`)
+            ? ok(`${tag} présente dans le fichier livré`)
+            : ko(`${tag} absente du fichier livré`);
+    }
+    // Régénération et comparaison : le fichier généré ne doit pas dériver.
+    const { execFileSync } = require('child_process');
+    try {
+        execFileSync(process.execPath,
+            [path.join(root, 'tools/build-hacs-bundle.js'), '--check'],
+            { stdio: 'pipe' });
+        ok('fichier livré à jour avec ses sources');
+    } catch (e) {
+        ko('fichier livré désynchronisé : node tools/build-hacs-bundle.js');
+    }
+}
 
 console.log('\n' + (failures ? `${failures} contrôle(s) en échec` : 'tous les contrôles passent'));
 process.exit(failures ? 1 : 0);

@@ -41,7 +41,7 @@ jobs:
       # introuvable » quelques étapes plus loin.
       - name: Le tag pointe-t-il sur une version outillée ?
         run: |
-          for f in tools/validate-repo.js tools/build-hacs-zip.sh tests/clim-flow-sim.js; do
+          for f in tools/validate-repo.js tools/build-hacs-bundle.js tests/clim-flow-sim.js; do
             [ -f "$f" ] || {
               echo "::error::$f absent de ce tag : il pointe sur un état du dépôt antérieur à l'outillage de release. Vérifier le tag." >&2
               exit 1; }
@@ -54,10 +54,10 @@ jobs:
       - name: Intégrité du dépôt
         run: node tools/validate-repo.js
 
-      - name: Construction de l'archive HACS
+      - name: Fichier livré à HACS
         id: build
         run: |
-          ./tools/build-hacs-zip.sh
+          node tools/build-hacs-bundle.js --check
           echo "zip=$(node -p "require('./hacs.json').filename")" >> "$GITHUB_OUTPUT"
 
       - name: Notes de version depuis le CHANGELOG
