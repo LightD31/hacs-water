@@ -85,6 +85,32 @@ sur le seul surplus solaire, **eau chaude prioritaire**. Import séparé de
 `flows-clim.json` (onglet « Climatisation Solaire »), sans aucune modification
 de `flows.json`.
 
+### Import dans Node-RED
+
+**Prérequis : le flow « Cumulus Solaire V3 » (`flows.json`) doit être déployé.**
+`flows-clim.json` en dépend deux fois : il lit `sensor.cumulus_automation`, et
+il **réutilise son nœud serveur Home Assistant** (`1a7a75b5.c29f2a`) au lieu
+d'en redéfinir un.
+
+Import par **menu ≡ → Import → sélection du fichier `flows-clim.json`**, puis
+Deploy. Aucune boîte de dialogue de conflit ne doit apparaître : le fichier ne
+contient aucun identifiant déjà présent.
+
+> Si Node-RED propose « Import copy » / « Replace », c'est qu'un onglet
+> « Climatisation Solaire » d'une tentative précédente traîne encore. Le
+> supprimer d'abord (onglet → menu → Delete), puis réimporter.
+
+Nœud serveur non redéfini **volontairement** : le redéfinir provoquait une
+collision d'identifiants, Node-RED renumérotait alors tout le flow et créait un
+**second nœud serveur sans jeton d'accès**, rendant invalides tous les nœuds qui
+le référencent — `sensor.clim_automation` en tête. Symptôme : erreur de
+validation sur ce nœud alors que sa configuration paraît correcte, et un
+doublon « Home Assistant » dans la barre latérale *Nœuds de configuration*.
+
+Serveur Home Assistant portant un autre identifiant que `1a7a75b5.c29f2a` :
+ouvrir n'importe quel nœud du flow, sélectionner le bon serveur, Node-RED
+proposant alors de l'appliquer à tous les nœuds concernés.
+
 ### Priorité à l'eau chaude, jusqu'à 60 °C
 
 Aucun couplage direct entre les deux flows : lecture de
