@@ -2,6 +2,47 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.12.0] - 2026-07-27
+
+- **Nouveau flow : climatisation et chauffage gratuits, eau chaude
+  prioritaire.** Fichier `flows-clim.json`, onglet Node-RED « Climatisation
+  Solaire », indépendant de `flows.json` (aucune modification de ce dernier).
+  Pilotage d'une clim réversible sur le seul surplus solaire, avec priorité
+  absolue à l'eau chaude sanitaire.
+- **Réservation du surplus au cumulus.** Lecture de
+  `sensor.cumulus_automation` par le flow clim, sans couplage direct entre les
+  deux automatisations. Distinction du cumulus **déjà en chauffe**
+  (consommation déjà déduite du surplus mesuré, aucune réservation) et du
+  cumulus **en attente avec besoin non couvert** (`CUMULUS_LOAD_W` réservés,
+  sinon la clim mangerait le surplus qui doit lui permettre de démarrer).
+  Réservation par sécurité en cas de sensor introuvable ou de température
+  d'eau illisible. Reliquat exposé en clair : `available_w`.
+- **Priorité effective en cours de cycle.** Retour d'un besoin d'eau chaude →
+  `available_w` négatif → arrêt de la clim, au besoin en court-circuitant la
+  temporisation anti court-cycle (`hard_stop` après 2 min d'import réseau
+  franc).
+- **Confort borné et stockage du gratuit.** Dépassement volontaire de la cible
+  (`CLIM_STORE_BAND`, défaut 1,5 °C) pour stocker l'énergie gratuite dans
+  l'inertie du bâtiment, borné par `CLIM_COOL_FLOOR` / `CLIM_HEAT_CEILING`.
+  Sens froid/chaud déduit de la température extérieure en mode auto, latché
+  pendant un cycle.
+- **Cohabitation avec l'usage manuel.** Clim allumée à la main jamais coupée
+  par le flow (`clim_owned`), et pause de 45 min sur toute intervention
+  manuelle détectée, comme dans le flow cumulus. Protection compresseur
+  (20 min de marche minimum, 15 min d'arrêt minimum).
+- **Sensor `sensor.clim_automation`** et notifications HA (sonde intérieure HS,
+  entité clim injoignable, sensor cumulus introuvable). Cartes d'exemple dans
+  `dashboard-clim-snippet.yaml`, en cartes HA natives.
+- **Garde-fou unités partielles.** Aucune commande envoyée si l'unité n'expose
+  pas le mode demandé (`hvac_modes` sans `cool`/`heat`), attribut
+  `mode_supported` et raison explicite plutôt qu'un échec de service en boucle.
+- **Simulation** : `tests/clim-flow-sim.js`, exécution des corps réels des
+  nœuds `function` sur horloge accélérée et registre d'états HA factice.
+  18 scénarios, 76 assertions, `node tests/clim-flow-sim.js`.
+- **Carte** : inchangée, aucun bump (le flow clim expose son propre sensor).
+- Fichiers ajoutés : `flows-clim.json`, `dashboard-clim-snippet.yaml`,
+  `tests/clim-flow-sim.js`. Fichiers modifiés : `README.md`, `CHANGELOG.md`.
+
 ## [v1.11.4] - 2026-07-15
 
 - **Style : phrases nominales, sans tiret cadratin.** Reformulation de
