@@ -521,7 +521,7 @@ Cet oubli étant facile et son symptôme peu parlant, la publication est
 automatisée (`.github/workflows/release.yml`) :
 
 ```
-git tag v1.16.0 && git push origin v1.16.0
+git tag v1.17.0 && git push origin v1.17.0
 ```
 
 Le workflow rejoue la simulation et les contrôles d'intégrité, construit
