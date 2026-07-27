@@ -24,10 +24,20 @@ Modifications notables de ce dépôt, listées ci-dessous.
   sept états produits par la simulation du flow — deux unités en marche, eau
   chaude prioritaire, veille, désactivée, hors saison, disjoncteur coupé, pièce
   en manuel — sans erreur JavaScript, ni `undefined` ni `NaN` dans le rendu.
-- **README** : documentation de la carte et de ses options. Note sur la
-  ressource Lovelace, le dépôt hébergeant désormais deux cartes.
-- Fichiers ajoutés : `clim-solaire-card.js`. Fichiers modifiés :
-  `dashboard-clim-snippet.yaml`, `README.md`, `CHANGELOG.md`.
+- **Livraison HACS par archive.** HACS ne télécharge **qu'un seul fichier** par
+  dépôt de plugin : son code s'arrête au premier fichier trouvé, quelle que soit
+  l'organisation du dépôt (`dist/` compris). Deux cartes ne pouvaient donc pas
+  cohabiter. `hacs.json` passe en `zip_release` avec
+  `filename: hacs-water.zip` : l'archive attachée à la release est extraite
+  dans `/config/www/community/hacs-water/`, et une ressource Lovelace est
+  déclarée par carte. L'URL de la carte cumulus reste inchangée.
+- **`tools/build-hacs-zip.sh`** : construction de l'archive, avec contrôle de
+  syntaxe des deux cartes au passage. L'archive n'est pas versionnée.
+- **README** : documentation de la carte et de ses options, procédure
+  d'installation et de publication de release corrigée.
+- Fichiers ajoutés : `clim-solaire-card.js`, `tools/build-hacs-zip.sh`,
+  `.gitignore`. Fichiers modifiés : `hacs.json`, `dashboard-clim-snippet.yaml`,
+  `README.md`, `CHANGELOG.md`.
 
 ## [v1.14.2] - 2026-07-27
 

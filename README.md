@@ -137,13 +137,17 @@ entity: sensor.clim_automation
 Éditeur visuel disponible, les helpers optionnels absents masquant simplement
 leur ligne. Exemples dans `dashboard-clim-snippet.yaml`.
 
-> **Ressource Lovelace** : ce dépôt contient désormais deux cartes. HACS
-> installe le dépôt dans `/config/www/community/hacs-water/` ; vérifier que
-> `clim-solaire-card.js` y figure et **ajouter sa ressource séparément**
-> (Paramètres → Tableaux de bord → ⋮ → Ressources), la déclaration `filename`
-> de `hacs.json` ne pouvant en désigner qu'une. À défaut, copie manuelle du
-> fichier dans `/config/www/` et ressource `/local/clim-solaire-card.js` de
-> type *JavaScript Module*.
+> **Ressource Lovelace** : HACS ne télécharge **qu'un seul fichier** par dépôt
+> de plugin. Ce dépôt en livrant deux cartes, `hacs.json` utilise
+> `zip_release` : l'archive `hacs-water.zip` attachée à chaque release est
+> extraite dans `/config/www/community/hacs-water/`. Une ressource Lovelace est
+> donc à déclarer **par carte** :
+>
+> - `/hacsfiles/hacs-water/cumulus-solaire-card.js`
+> - `/hacsfiles/hacs-water/clim-solaire-card.js`
+>
+> toutes deux de type *JavaScript Module*. L'URL de la carte cumulus est
+> inchangée, le dossier d'installation restant le même.
 
 ### Import dans Node-RED
 
@@ -497,9 +501,28 @@ partie du bouclage physique du harnais. Toute la décision vivant dans les nœud
 ## Installation via HACS (custom repository)
 
 1. HACS → Frontend → menu ⋮ en haut à droite → **Custom repositories**.
-2. URL : `https://github.com/USER/cumulus-solaire-card`, catégorie **Lovelace**.
-3. Installation de **Cumulus Solaire Card** depuis la liste.
-4. Rechargement du navigateur (Ctrl+F5). Ajout automatique de la ressource Lovelace par HACS.
+2. URL : `https://github.com/LightD31/hacs-water`, catégorie **Lovelace**.
+3. Installation de **Cumulus & Clim Solaire Cards** depuis la liste.
+4. Déclaration des ressources Lovelace, **une par carte** (Paramètres →
+   Tableaux de bord → ⋮ → Ressources), type *JavaScript Module* :
+   `/hacsfiles/hacs-water/cumulus-solaire-card.js` et
+   `/hacsfiles/hacs-water/clim-solaire-card.js`.
+5. Rechargement du navigateur (Ctrl+F5). Les bannières `CUMULUS-SOLAIRE-CARD` et
+   `CLIM-SOLAIRE-CARD` dans la console confirment le chargement des ressources.
+
+### Publication d'une release
+
+HACS ne télécharge qu'un seul fichier par dépôt de plugin. Les deux cartes
+voyagent donc dans une archive, déclarée par `zip_release` dans `hacs.json` :
+
+```
+./tools/build-hacs-zip.sh          # produit hacs-water.zip
+```
+
+L'archive est ensuite **attachée à la release GitHub**, sous ce nom exact — HACS
+cherche un asset nommé comme le `filename` de `hacs.json` et ne trouve rien
+sinon. L'archive n'est pas versionnée dans le dépôt, elle se reconstruit à la
+demande.
 
 ## Installation manuelle
 
