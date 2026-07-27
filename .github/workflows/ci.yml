@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Contrôles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Simulation du flow clim : exécute les corps réels des nœuds function
+      # sur une horloge accélérée et un registre d'états HA factice.
+      - name: Simulation du flow climatisation
+        run: node tests/clim-flow-sim.js
+
+      # Invariants du dépôt : manifeste HACS, intégrité des deux graphes,
+      # absence de collision d'identifiants entre eux, cartes enregistrées,
+      # archive complète.
+      - name: Intégrité du dépôt
+        run: node tools/validate-repo.js
+
+      - name: Construction de l'archive HACS
+        run: ./tools/build-hacs-zip.sh
