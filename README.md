@@ -143,6 +143,53 @@ n'est jamais coupée parce qu'une moins prioritaire est encore retenue par son
 n'expirent pas ensemble). Le délestage attend, `shed_deferred` le signale, et
 l'unité visée est nommée par `shed_blocked_by`.
 
+### Disjoncteurs intelligents : mesure réelle et alimentation
+
+Les cinq unités sont réparties sur deux disjoncteurs communicants, déclarés en
+JSON dans `CLIM_GROUPS` :
+
+| Groupe | Disjoncteur | Compteur | Pièces |
+|---|---|---|---|
+| Clim Nord | `switch.clim_avant` | `sensor.clim_avant_power` | Salon, Cuisine |
+| Clim Sud | `switch.clim_sud` | `sensor.clim_sud_power` | Chambre Tom, Chambre Didier, Chambre Marie |
+
+Deux apports par rapport à une simple estimation :
+
+- **Consommation récupérable mesurée.** « Récupérable » = ce que le flow rendrait
+  au réseau en éteignant ce qu'il a allumé. La mesure d'un groupe n'est
+  exploitable que si **toutes** ses unités en marche appartiennent au flow ;
+  sinon le compteur agrège du récupérable et du non-récupérable sans permettre
+  de les séparer, et l'estimation `CLIM_LOAD_W` reprend la main pour ce groupe.
+  Source indiquée par `clim_draw_source` (`mesure` / `estimation` / `mixte`).
+  La veille du disjoncteur (`CLIM_GROUP_STANDBY_W`, défaut 5 W) est retirée :
+  elle subsiste après extinction, elle n'est pas récupérable.
+- **État d'alimentation.** Disjoncteur ouvert → unités du groupe écartées avec la
+  cause exacte (« disjoncteur Clim Nord coupé ») au lieu d'un « injoignable »
+  générique, et notification si du surplus reste inexploité. L'autre groupe
+  continue normalement. Le flow **ne commande jamais les disjoncteurs** :
+  couper l'alimentation d'un compresseur en marche n'est pas une façon de
+  moduler une charge.
+
+`CLIM_GROUPS` vide ou invalide : repli complet sur l'estimation par unité,
+aucun disjoncteur supposé coupé.
+
+#### Calibrer `CLIM_LOAD_W`
+
+`CLIM_LOAD_W` est le **coût d'un palier**, c'est-à-dire la consommation prêtée à
+une unité *pas encore démarrée*. Les unités inverter modulant beaucoup (relevé :
+250 W pour une chambre en rafraîchissement proche de sa consigne, contre 800 W
+par défaut), la valeur juste s'observe :
+
+1. laisser tourner un cycle ;
+2. lire l'attribut `observed_draw_per_unit_w` du sensor (mesure des groupes,
+   veille déduite, divisée par le nombre d'unités en marche) ;
+3. reporter le **maximum observé** dans `CLIM_LOAD_W`.
+
+Trop haut, le flow est conservateur et laisse du surplus inexploité ; trop bas,
+il démarre une unité de trop, ce que le garde-fou import réseau corrige en
+2 min. Une fois les unités en marche, le budget s'appuie de toute façon sur la
+mesure et non sur cette estimation.
+
 ### Garde-fou import réseau
 
 `available_w > 0` **ne signifie pas** qu'on n'importe rien : c'est le surplus
@@ -198,10 +245,11 @@ intérieur tranche seul.
 | `CLIM_UNITS` | les 5 `climate.*` | Liste **ordonnée** des unités, priorité décroissante |
 | `CLIM_UNIT_LABELS` | `Salon,Cuisine,Chambre Tom,…` | Libellés d'affichage, même ordre |
 | `CLIM_OUTDOOR_SENSOR` | *(vide)* | Sonde extérieure, optionnelle |
-| `CLIM_POWER_SENSOR` | *(vide)* | Compteur clim, informatif seulement |
+| `CLIM_GROUPS` | 2 disjoncteurs | Groupes de disjoncteurs (JSON) : disjoncteur, compteur, pièces |
+| `CLIM_GROUP_STANDBY_W` | `5` | Veille d'un disjoncteur, retirée du récupérable |
 | `CUMULUS_SENSOR` | `sensor.cumulus_automation` | Sensor du flow eau chaude |
 | `SOLAR_SENSOR` / `GRID_SENSOR` | `sensor.powermeter_power_a` / `_b` | Production solaire / échange réseau |
-| `CLIM_LOAD_W` | `800` | Puissance d'**une** unité = taille d'un palier |
+| `CLIM_LOAD_W` | `800` | Coût d'un palier, à calibrer sur `observed_draw_per_unit_w` |
 | `CUMULUS_LOAD_W` | `1200` | Puissance du cumulus (montant réservé) |
 | `HOT_WATER_PRIORITY_TEMP` | `60` | Température jusqu'à laquelle l'eau chaude est prioritaire |
 | `CLIM_MAX_UNITS` | `5` | Plafond d'unités simultanées |
@@ -260,14 +308,16 @@ pour le dashboard : `available_w`, `cumulus_reserve_w`,
 `cumulus_reserve_reason`, `hot_water_priority`, `hot_water_priority_temp`,
 `preempted_by_hot_water`, `target_count`, `tier_candidate`, `fundable_units`,
 `grid_importing`, `hard_stop`, `shed_deferred`, `shed_blocked_by`,
-`active_units`, `clim_draw_estimated`, `clim_kwh_today`, plus un tableau
-`units` détaillant chaque pièce (température, mode demandé, consigne de
-stockage, propriété, temporisations restantes). Exemples de cartes dans
+`active_units`, `clim_draw_recoverable`, `clim_draw_source`,
+`clim_power_total_measured`, `observed_draw_per_unit_w`, `clim_kwh_today`, plus
+deux tableaux : `units` (température, groupe, alimentation, mode demandé,
+consigne de stockage, propriété, temporisations restantes) et `groups`
+(disjoncteur, état, puissance mesurée). Exemples de cartes dans
 `dashboard-clim-snippet.yaml`.
 
 Notifications HA : plus aucune température de pièce (≥ 2 h), unité injoignable
 (≥ 1 h), `sensor.cumulus_automation` introuvable, mode demandé absent de
-`hvac_modes`.
+`hvac_modes`, disjoncteur coupé alors que du surplus reste disponible.
 
 ### Simulation
 
@@ -279,12 +329,14 @@ réseau (une unité qui démarre réduit l'export, comme sur l'installation) :
 node tests/clim-flow-sim.js
 ```
 
-28 scénarios, 134 assertions : réservation dans chaque situation du cumulus,
+33 scénarios, 161 assertions : réservation dans chaque situation du cumulus,
 seuil 60 °C, montée et délestage en paliers, ordre de priorité au délestage,
-garde-fou import réseau, pilotage manuel par unité, pause 45 min,
-temporisations compresseur, mode non supporté, unité injoignable, stockage,
-réalignement de consigne. Toute la décision vivant dans les nœuds `function`,
-le harnais rejoue le pipeline réel sans logique dupliquée.
+garde-fou import réseau, mesure par disjoncteur et repli sur estimation,
+disjoncteur coupé, calibration sur unités inverter à 250 W, pilotage manuel par
+unité, pause 45 min, temporisations compresseur, mode non supporté, unité
+injoignable, stockage, réalignement de consigne. Les compteurs de groupe font
+partie du bouclage physique du harnais. Toute la décision vivant dans les nœuds
+`function`, le harnais rejoue le pipeline réel sans logique dupliquée.
 
 ## Installation via HACS (custom repository)
 

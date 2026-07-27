@@ -2,6 +2,49 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.14.0] - 2026-07-27
+
+- **Disjoncteurs intelligents exploités : mesure réelle au lieu d'estimation.**
+  Nouvelle variable `CLIM_GROUPS` (JSON) décrivant les deux disjoncteurs
+  communicants (Clim Nord → Salon, Cuisine ; Clim Sud → les trois chambres),
+  leur compteur de puissance et leur interrupteur. La consommation récupérable
+  du flow provient désormais de la mesure du groupe dès qu'elle est exploitable,
+  c'est-à-dire quand toutes les unités en marche du groupe appartiennent au
+  flow ; sinon le compteur mêle récupérable et non-récupérable sans permettre de
+  les séparer, et l'estimation `CLIM_LOAD_W` reprend la main pour ce groupe.
+  Source exposée par `clim_draw_source`.
+- **Veille des disjoncteurs déduite du récupérable** (`CLIM_GROUP_STANDBY_W`,
+  défaut 5 W) : elle subsiste après extinction des unités, la compter comme
+  récupérable gonflait le budget de surplus.
+- **Alimentation surveillée.** Disjoncteur ouvert : unités du groupe écartées
+  avec la cause exacte (« disjoncteur Clim Nord coupé ») plutôt qu'un
+  « injoignable » générique, l'autre groupe continuant normalement. Le flow ne
+  commande jamais les disjoncteurs, couper l'alimentation d'un compresseur en
+  marche n'étant pas une façon de moduler une charge.
+- **Calibration de `CLIM_LOAD_W` outillée.** Relevé sur l'installation : une
+  unité en rafraîchissement proche de sa consigne tire ~250 W, contre 800 W
+  supposés. Nouvel attribut `observed_draw_per_unit_w` (mesure des groupes,
+  veille déduite, divisée par le nombre d'unités en marche) pour reporter la
+  valeur réelle dans `CLIM_LOAD_W`. Défaut laissé à 800 W, direction prudente :
+  trop bas, une unité de trop démarre, et seul le garde-fou import réseau la
+  rattrape.
+- **Correctif : l'alerte disjoncteur coupé ne pouvait jamais se déclencher.**
+  Sa condition exigeait qu'une pièce du groupe soit en demande, alors qu'un
+  disjoncteur ouvert rend les entités injoignables, donc sans besoin
+  exprimable. Condition remplacée par le signal réellement utile : du surplus
+  reste disponible alors que le groupe est hors tension.
+- **Triggers supplémentaires** sur `switch.clim_avant` et `switch.clim_sud`,
+  pour une réaction immédiate à une coupure.
+- **Sensor** : attributs `clim_draw_recoverable` (ex-`clim_draw_estimated`),
+  `clim_draw_source`, `clim_power_total_measured`, `observed_draw_per_unit_w`,
+  tableau `groups`, et `group` / `breaker_on` par unité.
+- **Simulation** : compteurs de groupe intégrés au bouclage physique (veille de
+  5 W comprise), consommation par unité réglable pour simuler la modulation
+  inverter. 33 scénarios, 161 assertions.
+- **Carte** : inchangée, aucun bump.
+- Fichiers modifiés : `flows-clim.json`, `dashboard-clim-snippet.yaml`,
+  `tests/clim-flow-sim.js`, `README.md`, `CHANGELOG.md`.
+
 ## [v1.13.0] - 2026-07-27
 
 - **Flow climatisation adapté à l'installation réelle : cinq unités Daikin.**

@@ -52,6 +52,7 @@ function makeCtx(states, surplusBase) {
     return {
         warnings: [], commands: [], notifications: [], states,
         surplusBase: surplusBase == null ? null : surplusBase, solar: null,
+        unitW: null,   // consommation réelle par unité, si différente de UNIT_W
         flow: { get: (k) => store.get(k), set: (k, v) => store.set(k, v) },
         global: { get: () => ({ homeAssistant: { states } }) },
         env: { get: (k) => ENV[k] },
@@ -64,11 +65,19 @@ function makeCtx(states, surplusBase) {
 // verrait un surplus fantôme : chaque palier franchi en ferait démarrer un autre.
 // surplusBase = export disponible AVANT la clim et AVANT le cumulus.
 function physics(ctx) {
+    // Compteurs de groupe : consommation réelle des unités en marche du groupe,
+    // plus une veille de 5 W comme sur les vrais disjoncteurs.
+    let total = 0;
+    for (const gr of GROUPS) {
+        const on = gr.units.filter(id => isOn(ctx.states[id].state)).length;
+        const w = on * (ctx.unitW != null ? ctx.unitW : UNIT_W) + 5;
+        total += on * (ctx.unitW != null ? ctx.unitW : UNIT_W);
+        if (ctx.states[gr.power]) ctx.states[gr.power].state = String(w);
+    }
     if (ctx.surplusBase == null) return;
-    const running = UNIT_IDS.filter(id => isOn(ctx.states[id].state)).length;
     const cu = ctx.states['sensor.cumulus_automation'];
     const cuPower = cu ? (parseFloat(cu.attributes.cumulus_power) || 0) : 0;
-    const exported = ctx.surplusBase - running * UNIT_W - cuPower;
+    const exported = ctx.surplusBase - total - cuPower;
     ctx.states['sensor.powermeter_power_b'].state = String(-exported);
     ctx.states['sensor.powermeter_power_a'].state = String(ctx.solar != null
         ? ctx.solar : Math.max(ctx.surplusBase, 0) + 1000);
@@ -115,7 +124,8 @@ function run(ctx, minutes) {
 const UNIT_IDS = ENV.CLIM_UNITS.split(',');
 const UNIT_LABELS = ENV.CLIM_UNIT_LABELS.split(',');
 const MODES = ['off', 'fan_only', 'heat', 'cool', 'heat_cool', 'dry'];
-const UNIT_W = 800;   // = CLIM_LOAD_W, consommation simulée d'une unité
+const UNIT_W = 800;   // consommation simulée d'une unité par défaut
+const GROUPS = JSON.parse(ENV.CLIM_GROUPS);
 
 function states(o = {}) {
     const d = {
@@ -123,7 +133,7 @@ function states(o = {}) {
         targetCool: 25, targetHeat: 20, surplusTrig: null, outdoor: null,
         temps: [27, 27, 27, 27, 27],           // par unité, ordre de CLIM_UNITS
         hvac: ['off', 'off', 'off', 'off', 'off'],
-        cumulus: null, noCumulus: false, modes: null, ...o,
+        cumulus: null, noCumulus: false, modes: null, breakers: null, ...o,
     };
     const st = {
         'sensor.powermeter_power_a': { state: String(d.solar) },
@@ -144,6 +154,10 @@ function states(o = {}) {
             },
         };
     });
+    for (const gr of GROUPS) {
+        st[gr.switch] = { state: (d.breakers && d.breakers[gr.name] === 'off') ? 'off' : 'on' };
+        st[gr.power] = { state: '5' };
+    }
     if (d.outdoor != null) {
         ENV.CLIM_OUTDOOR_SENSOR = 'sensor.temp_exterieur_temperature';
         st['sensor.temp_exterieur_temperature'] = { state: String(d.outdoor) };
@@ -561,7 +575,7 @@ scenario('28. Sensor : attributs clés et détail par unité', () => {
     for (const k of ['available_w', 'cumulus_reserve_w', 'cumulus_reserve_reason',
         'hot_water_priority', 'hot_water_priority_temp', 'preempted_by_hot_water',
         'target_count', 'tier_candidate', 'fundable_units', 'surplus_trigger_per_unit',
-        'active_units', 'units', 'clim_draw_estimated', 'clim_kwh_today']) {
+        'active_units', 'units', 'clim_draw_recoverable', 'clim_kwh_today']) {
         check('attribut ' + k, at[k] !== undefined, JSON.stringify(at[k]));
     }
     check('5 unités détaillées', at.units.length === 5, String(at.units.length));
@@ -571,6 +585,87 @@ scenario('28. Sensor : attributs clés et détail par unité', () => {
         at.units.map(u => u.priority).join(','));
     check('state lisible',
         typeof m.sensor.state === 'string' && m.sensor.state.length > 3, m.sensor.state);
+});
+
+scenario('29. Consommation récupérable prise sur la mesure du disjoncteur', () => {
+    const ctx = makeCtx(states({}), 1000);
+    const m = run(ctx, 8);
+    check('une unité en marche', onCount(ctx) === 1, onLabels(ctx).join(','));
+    check('source = mesure', m.climDrawSource === 'mesure', m.climDrawSource);
+    check('veille du disjoncteur exclue du récupérable', m.climDraw === 800,
+        String(m.climDraw));
+    check('total mesuré veille comprise', m.climPowerTotalMeasured === 810,
+        String(m.climPowerTotalMeasured));
+});
+
+scenario('30. Unité manuelle dans le groupe : repli sur l\'estimation', () => {
+    const ctx = makeCtx(states({}), 1800);
+    // Cuisine allumée à la main, sur le même disjoncteur que le Salon : le
+    // compteur de groupe agrège récupérable et non-récupérable.
+    ctx.states[UNIT_IDS[1]].state = 'cool';
+    const m = run(ctx, 14);
+    check('Cuisine en pilotage manuel', m.units[1].manualControl === true);
+    check('Salon piloté par le flow', m.units[0].owned === true);
+    check('source = estimation pour ce groupe',
+        m.climDrawSource === 'estimation' || m.climDrawSource === 'mixte',
+        m.climDrawSource);
+    check('récupérable = 1 unité estimée', m.climDraw === 800, String(m.climDraw));
+    check('Cuisine jamais commandée',
+        ctx.commands.every(c => c.target !== UNIT_IDS[1]));
+});
+
+scenario('31. Unités inverter à 250 W : calibration de CLIM_LOAD_W', () => {
+    // Cas réel relevé sur l'installation : une unité en modulation tire ~250 W,
+    // pas 800 W. Le flow reste correct mais sous-exploite le surplus ; l'attribut
+    // observed_draw_per_unit_w donne la valeur à reporter dans CLIM_LOAD_W.
+    const ctx = makeCtx(states({}), 1000);
+    ctx.unitW = 250;
+    const m = run(ctx, 10);
+    check('une unité démarrée', onCount(ctx) === 1, onLabels(ctx).join(','));
+    check('conso réelle mesurée, veille des 2 groupes comprise', m.climPowerTotalMeasured === 260,
+        String(m.climPowerTotalMeasured));
+    check('récupérable = mesure, pas 800 W', m.climDraw === 250, String(m.climDraw));
+    check('consommation observée par unité exposée', m.observedDrawPerUnit === 250,
+        String(m.observedDrawPerUnit));
+    check('aucun import réseau', m.gridImporting === false,
+        ctx.states['sensor.powermeter_power_b'].state + ' W');
+    const at = m.sensor.attributes;
+    check('écart de calibration visible dans le sensor',
+        at.observed_draw_per_unit_w === 250 && at.clim_load_w === 800,
+        at.observed_draw_per_unit_w + ' vs ' + at.clim_load_w);
+});
+
+scenario('32. Disjoncteur coupé : groupe écarté, notification, l\'autre continue', () => {
+    const ctx = makeCtx(states({ breakers: { 'Clim Nord': 'off' } }), 1000);
+    // Disjoncteur ouvert : les unités du groupe deviennent injoignables
+    ctx.states[UNIT_IDS[0]].state = 'unavailable';
+    ctx.states[UNIT_IDS[1]].state = 'unavailable';
+    const m = run(ctx, 10);
+    check('Salon écarté', m.units[0].desired === 'skip', m.units[0].desired);
+    check('cause précise, pas « injoignable »',
+        /disjoncteur/i.test(m.units[0].desiredReason), m.units[0].desiredReason);
+    check('groupe marqué hors tension', m.groups[0].breakerOn === false);
+    check('notification émise', ctx.notifications.includes('clim_disjoncteur_coupe'),
+        JSON.stringify(ctx.notifications));
+    check('une seule notification', ctx.notifications
+        .filter(x => x === 'clim_disjoncteur_coupe').length === 1);
+    check('le groupe Sud prend le relais',
+        onLabels(ctx).join(',') === 'Chambre Tom', onLabels(ctx).join(','));
+    check('aucune commande vers le groupe coupé',
+        ctx.commands.every(c => c.target !== UNIT_IDS[0] && c.target !== UNIT_IDS[1]));
+});
+
+scenario('33. CLIM_GROUPS absent : repli complet sur l\'estimation', () => {
+    const saved = ENV.CLIM_GROUPS;
+    ENV.CLIM_GROUPS = '';
+    const ctx = makeCtx(states({}), 1000);
+    const m = run(ctx, 10);
+    check('aucun groupe déclaré', m.groups.length === 0, String(m.groups.length));
+    check('source = estimation', m.climDrawSource === 'estimation', m.climDrawSource);
+    check('récupérable estimé', m.climDraw === 800, String(m.climDraw));
+    check('une unité démarrée quand même', onCount(ctx) === 1, onLabels(ctx).join(','));
+    check('pas de disjoncteur supposé coupé', m.units.every(u => u.breakerOn === true));
+    ENV.CLIM_GROUPS = saved;
 });
 
 console.log('\n=== ' + pass + ' assertions OK, ' + fail + ' échecs ===');

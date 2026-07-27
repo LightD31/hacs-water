@@ -24,8 +24,11 @@
       {{ a.fundable_units }} unité(s) finançable(s) |
     | Unités en marche | {{ a.active_count }} / {{ a.max_units }}
       {%- if a.active_units %} ({{ a.active_units | join(', ') }}){% endif %} |
-    | Conso estimée | {{ a.clim_draw_estimated }} W
-      · {{ a.clim_kwh_today }} kWh aujourd'hui |
+    | Conso récupérable | {{ a.clim_draw_recoverable }} W
+      ({{ a.clim_draw_source }}) · {{ a.clim_kwh_today }} kWh aujourd'hui |
+    | Mesure disjoncteurs | {{ a.clim_power_total_measured }} W
+      {%- if a.observed_draw_per_unit_w %} · {{ a.observed_draw_per_unit_w }} W/unité
+      observés (réglage `CLIM_LOAD_W` : {{ a.clim_load_w }} W){% endif %} |
 
     {% if a.preempted_by_hot_water %}
     ⚠️ Surplus suffisant mais **réservé à l'eau chaude** :
@@ -40,6 +43,11 @@
     {% elif a.manual_count > 0 %}
     ✋ {{ a.manual_count }} unité(s) allumée(s) hors automatisation, non modifiée(s).
     {% endif %}
+
+    {% for g in a.groups if not g.breaker_on %}
+    🔌 Disjoncteur **{{ g.name }}** hors tension : pièces de ce groupe
+    indisponibles pour le confort gratuit.
+    {% endfor %}
     {% endif %}
 
 
@@ -50,14 +58,16 @@
     {% if units %}
     ### Pièces, par ordre de priorité
 
-    | # | Pièce | Temp. | Demande | Consigne | État |
-    |---|---|---|---|---|---|
+    | # | Pièce | Groupe | Temp. | Demande | Consigne | État |
+    |---|---|---|---|---|---|---|
     {% for u in units -%}
     | {{ u.priority }} | {{ u.label }}
+    | {{ u.group | default('—') }}
     | {{ u.current_temp if u.current_temp is not none else '—' }} °C
     | {{ {'cool': '❄️ froid', 'heat': '🔥 chaud', 'none': '—'}[u.need_mode] }}
     | {{ u.store_target if u.store_target is not none else '—' }}
-    | {% if not u.available %}injoignable
+    | {% if not u.breaker_on %}🔌 disjoncteur coupé
+      {%- elif not u.available %}injoignable
       {%- elif u.manual_control %}✋ manuel
       {%- elif u.hold_active %}⏸ pause
       {%- elif u.desired == 'on' and u.owned %}✅ en marche
@@ -115,6 +125,19 @@
       entity: sensor.clim_automation
       attribute: grid_importing
       name: Import réseau
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: clim_draw_source
+      name: Source de la conso
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: observed_draw_per_unit_w
+      name: Conso observée / unité
+      suffix: " W"
+    - entity: switch.clim_avant
+      name: Disjoncteur Clim Nord
+    - entity: switch.clim_sud
+      name: Disjoncteur Clim Sud
     - type: attribute
       entity: sensor.clim_automation
       attribute: eligible_count
