@@ -1,0 +1,88 @@
+name: Release
+
+# HACS cherche, dans la release, un asset nommé exactement comme le `filename`
+# de hacs.json. L'oublier fait échouer l'installation sans message clair, d'où
+# cette automatisation.
+#
+# Trois entrées possibles :
+#   - push d'un tag v*        → crée la release, notes tirées du CHANGELOG
+#   - release publiée à la main → attache seulement l'archive, notes préservées
+#   - workflow_dispatch        → rejoue la publication d'un tag existant
+on:
+  push:
+    tags: ['v*']
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag à publier (ex. v1.15.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publication
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Une release ne part pas avec un flow ou une carte cassés.
+      - name: Simulation du flow climatisation
+        run: node tests/clim-flow-sim.js
+
+      - name: Intégrité du dépôt
+        run: node tools/validate-repo.js
+
+      - name: Construction de l'archive HACS
+        id: build
+        run: |
+          ./tools/build-hacs-zip.sh
+          echo "zip=$(node -p "require('./hacs.json').filename")" >> "$GITHUB_OUTPUT"
+
+      - name: Notes de version depuis le CHANGELOG
+        id: notes
+        run: |
+          TAG="${{ inputs.tag || github.event.release.tag_name || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if ! ./tools/changelog-section.sh "$TAG" > notes.md || [ ! -s notes.md ]; then
+            echo "Section « ## [$TAG] » absente du CHANGELOG, notes génériques." >&2
+            echo "Voir [CHANGELOG.md](CHANGELOG.md)." > notes.md
+          fi
+          cat notes.md
+
+      # `gh` plutôt qu'une action tierce : moins de surface, et surtout aucun
+      # risque d'écraser des notes rédigées à la main quand la release existe.
+      - name: Publication de la release et de son archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG='${{ steps.notes.outputs.tag }}'
+          ZIP='${{ steps.build.outputs.zip }}'
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG existante : ajout de l'archive, notes inchangées."
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            echo "Création de la release $TAG."
+            gh release create "$TAG" "$ZIP" --title "$TAG" --notes-file notes.md
+          fi
+
+      - name: Vérification de l'asset publié
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG='${{ steps.notes.outputs.tag }}'
+          ZIP='${{ steps.build.outputs.zip }}'
+          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$ZIP" \
+            && echo "Asset $ZIP présent, HACS le trouvera." \
+            || { echo "Asset $ZIP absent de la release, HACS échouera." >&2; exit 1; }

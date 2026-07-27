@@ -513,16 +513,46 @@ partie du bouclage physique du harnais. Toute la décision vivant dans les nœud
 ### Publication d'une release
 
 HACS ne télécharge qu'un seul fichier par dépôt de plugin. Les deux cartes
-voyagent donc dans une archive, déclarée par `zip_release` dans `hacs.json` :
+voyagent donc dans une archive, déclarée par `zip_release` dans `hacs.json`, et
+**attachée à la release sous le nom exact du `filename`** — HACS cherche un
+asset portant ce nom et ne trouve rien sinon.
+
+Cet oubli étant facile et son symptôme peu parlant, la publication est
+automatisée (`.github/workflows/release.yml`) :
 
 ```
-./tools/build-hacs-zip.sh          # produit hacs-water.zip
+git tag v1.16.0 && git push origin v1.16.0
 ```
 
-L'archive est ensuite **attachée à la release GitHub**, sous ce nom exact — HACS
-cherche un asset nommé comme le `filename` de `hacs.json` et ne trouve rien
-sinon. L'archive n'est pas versionnée dans le dépôt, elle se reconstruit à la
-demande.
+Le workflow rejoue la simulation et les contrôles d'intégrité, construit
+l'archive, crée la release avec les notes tirées de la section correspondante du
+CHANGELOG, y attache l'archive, puis **vérifie que l'asset est bien présent**.
+
+Une release publiée à la main depuis l'interface GitHub déclenche le même
+workflow : il se contente alors d'attacher l'archive, sans toucher aux notes
+rédigées. `workflow_dispatch` permet de rejouer la publication d'un tag existant.
+
+Construction locale de l'archive, pour vérification :
+
+```
+./tools/build-hacs-zip.sh
+```
+
+L'archive n'est pas versionnée dans le dépôt.
+
+### Contrôles automatiques
+
+`.github/workflows/ci.yml`, sur chaque push et chaque PR :
+
+- `node tests/clim-flow-sim.js` — 34 scénarios, 175 assertions ;
+- `node tools/validate-repo.js` — invariants du dépôt, chacun correspondant à un
+  défaut réellement rencontré : manifeste HACS cohérent (`zip_release` +
+  `filename` en `.zip`), intégrité des deux graphes Node-RED (identifiants
+  uniques, `wires` et groupes résolus), **absence de collision d'identifiants
+  entre les deux flows** (cause du nœud serveur dupliqué à l'import), nœuds
+  `climate` sans entité en dur, cartes enregistrées et déclarées, archive
+  contenant bien toutes les cartes ;
+- construction de l'archive.
 
 ## Installation manuelle
 

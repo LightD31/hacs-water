@@ -2,6 +2,35 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.16.0] - 2026-07-27
+
+- **Publication de release automatisée** (`.github/workflows/release.yml`).
+  Un `git push` de tag `v*` suffit : le workflow rejoue la simulation et les
+  contrôles d'intégrité, construit l'archive HACS, crée la release avec les
+  notes tirées de la section correspondante du CHANGELOG, y attache l'archive,
+  puis **vérifie que l'asset est bien présent** — l'oublier fait échouer
+  l'installation HACS sans message clair. Une release publiée à la main
+  déclenche le même workflow, qui se contente alors d'attacher l'archive sans
+  toucher aux notes rédigées ; `workflow_dispatch` rejoue un tag existant.
+  `gh` est utilisé plutôt qu'une action tierce : moins de surface, et aucun
+  risque d'écrasement des notes.
+- **Contrôles automatiques** (`.github/workflows/ci.yml`) sur chaque push et
+  chaque PR : simulation du flow, intégrité du dépôt, construction de l'archive.
+  Le dépôt n'avait aucune CI jusqu'ici.
+- **`tools/validate-repo.js`** : invariants du dépôt, chacun correspondant à un
+  défaut réellement rencontré — manifeste HACS cohérent, intégrité des deux
+  graphes Node-RED, **absence de collision d'identifiants entre les deux flows**
+  (cause du nœud serveur dupliqué à l'import, v1.14.1), nœuds `climate` sans
+  entité en dur, cartes enregistrées et déclarées dans `window.customCards`,
+  archive contenant bien toutes les cartes présentes.
+- **`tools/changelog-section.sh`** : extraction de la section d'un tag, pour les
+  notes de release.
+- **`tools/build-hacs-zip.sh`** : le nom de l'archive est désormais lu dans
+  `hacs.json` plutôt que recopié, les deux ne pouvant plus diverger.
+- Fichiers ajoutés : `.github/workflows/ci.yml`, `.github/workflows/release.yml`,
+  `tools/validate-repo.js`, `tools/changelog-section.sh`. Fichiers modifiés :
+  `tools/build-hacs-zip.sh`, `README.md`, `CHANGELOG.md`.
+
 ## [v1.15.0] - 2026-07-27
 
 - **Nouvelle carte `clim-solaire-card.js`** pour `sensor.clim_automation`, dans
