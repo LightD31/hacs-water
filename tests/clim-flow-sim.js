@@ -215,28 +215,43 @@ scenario('1. Eau chaude prioritaire : 1500 W de surplus, rien pour la clim', () 
     check('état « eau chaude prioritaire »', /eau chaude prioritaire/i.test(m.state), m.state);
 });
 
-scenario('2. Priorité jusqu\'à 60 °C, pas seulement jusqu\'à la cible', () => {
-    // Eau à 57 °C : au-dessus de reach_for (55) mais sous le seuil de priorité
+scenario('2. Priorité jusqu\'à la cible du cumulus', () => {
+    // Le seuil suit reach_for : réserver au-delà de ce que le ballon atteint
+    // réellement gèlerait la réservation, et le confort ne tournerait jamais.
     const ctx = makeCtx(states({
-        cumulus: Object.assign({}, HOT, { water_temp: 57 }) }), 1500);
+        cumulus: Object.assign({}, HOT, { water_temp: 54, reach_for: 55 }) }), 1500);
     let m = run(ctx, 12);
-    check('seuil de priorité = 60 °C', m.hotWaterPriorityTemp === 60,
+    check('seuil = cible du cumulus (55 °C)', m.hotWaterPriorityTemp === 55,
         String(m.hotWaterPriorityTemp));
-    check('réservation maintenue à 57 °C', m.cumulusReserveW === 1200,
-        m.cumulusReserveReason);
+    check('seuil asservi à la cible', m.hotWaterPriorityFollowsTarget === true);
+    check('réservation sous la cible', m.cumulusReserveW === 1200, m.cumulusReserveReason);
     check('aucune unité démarrée', onCount(ctx) === 0, onLabels(ctx).join(','));
-    // L'eau franchit 60 °C : le surplus est rendu au confort
-    ctx.states['sensor.cumulus_automation'].attributes.water_temp = 61;
+    // Cible atteinte : le surplus revient au confort
+    ctx.states['sensor.cumulus_automation'].attributes.water_temp = 56;
     m = run(ctx, 8);
-    check('réservation levée à 61 °C', m.cumulusReserveW === 0, m.cumulusReserveReason);
+    check('réservation levée à la cible', m.cumulusReserveW === 0, m.cumulusReserveReason);
     check('une unité démarre', onCount(ctx) === 1, onLabels(ctx).join(','));
 });
 
-scenario('3. Seuil relevé par un cycle légionelle (reach_for 62 °C)', () => {
+scenario('2b. Seuil fixe imposé par HOT_WATER_PRIORITY_TEMP', () => {
+    const saved = ENV.HOT_WATER_PRIORITY_TEMP;
+    ENV.HOT_WATER_PRIORITY_TEMP = '60';
+    const ctx = makeCtx(states({
+        cumulus: Object.assign({}, HOT, { water_temp: 57, reach_for: 55 }) }), 1500);
+    const m = run(ctx, 12);
+    check('seuil forcé à 60 °C', m.hotWaterPriorityTemp === 60, String(m.hotWaterPriorityTemp));
+    check('seuil non asservi à la cible', m.hotWaterPriorityFollowsTarget === false);
+    check('réservation malgré la cible atteinte', m.cumulusReserveW === 1200,
+        m.cumulusReserveReason);
+    check('aucune unité démarrée', onCount(ctx) === 0, onLabels(ctx).join(','));
+    ENV.HOT_WATER_PRIORITY_TEMP = saved;
+});
+
+scenario('3. La cible relevée par un cycle légionelle emporte la priorité', () => {
     const ctx = makeCtx(states({
         cumulus: Object.assign({}, HOT, { water_temp: 61, reach_for: 62 }) }), 1500);
     const m = run(ctx, 12);
-    check('seuil suit reach_for', m.hotWaterPriorityTemp === 62,
+    check('seuil = 62 °C, sans réglage', m.hotWaterPriorityTemp === 62,
         String(m.hotWaterPriorityTemp));
     check('réservation maintenue à 61 °C', m.cumulusReserveW === 1200,
         m.cumulusReserveReason);

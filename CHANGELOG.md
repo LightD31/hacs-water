@@ -2,6 +2,28 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.19.0] - 2026-07-27
+
+- **Priorité eau chaude asservie à la cible du cumulus.** Le seuil suit
+  désormais `reach_for`, la température que le flow cumulus cherche réellement à
+  atteindre, au lieu des 60 °C fixes introduits en v1.13.0. Ce seuil fixe
+  supposait le ballon capable d'atteindre 60 °C ; réglé plus bas (thermostat
+  mécanique, consigne du chauffe-eau), la réservation ne se levait jamais et le
+  confort gratuit ne tournait pas. La cible étant relevée d'elle-même à 62 °C
+  pendant un cycle anti-légionelle dû, la priorité suit sans réglage.
+- **`HOT_WATER_PRIORITY_TEMP` passe à `0` par défaut**, valeur signifiant
+  « suivre la cible ». Une valeur strictement positive impose un seuil fixe, à
+  ne retenir que s'il est réellement atteignable par le ballon. Nouvel attribut
+  `hot_water_priority_follows_target` pour distinguer les deux régimes.
+- **Réservation par sécurité étendue** au cas où la cible du cumulus est
+  illisible, et non plus seulement la température d'eau.
+- **Simulation** : scénario 2 réécrit (réservation sous la cible, levée à la
+  cible), scénario 2b ajouté pour le seuil fixe imposé, scénario 3 conservé —
+  la cible relevée par la légionelle emporte la priorité sans réglage.
+  35 scénarios, 180 assertions.
+- Fichiers modifiés : `flows-clim.json`, `tests/clim-flow-sim.js`, `README.md`,
+  `CHANGELOG.md`.
+
 ## [v1.18.0] - 2026-07-27
 
 - **Correctif : les deux cartes disparues de Home Assistant après la v1.17.0.**

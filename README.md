@@ -169,37 +169,40 @@ Serveur Home Assistant portant un autre identifiant que `1a7a75b5.c29f2a` :
 ouvrir n'importe quel nœud du flow, sélectionner le bon serveur, Node-RED
 proposant alors de l'appliquer à tous les nœuds concernés.
 
-### Priorité à l'eau chaude, jusqu'à 60 °C
+### Priorité à l'eau chaude, jusqu'à la cible du cumulus
 
 Aucun couplage direct entre les deux flows : lecture de
 `sensor.cumulus_automation` par le flow clim, qui en déduit la part du surplus
-à laisser au cumulus. L'eau chaude garde la priorité jusqu'à
-`HOT_WATER_PRIORITY_TEMP` (**60 °C** par défaut, température de référence
-anti-légionelle), et non jusqu'à la seule cible de confort `reach_for` : ballon
-pleinement chargé et compteur de jours sans 60 °C remis à zéro avant tout usage
-du surplus pour le confort. Seuil relevé automatiquement si `reach_for` le
-dépasse (62 °C pendant un cycle légionelle dû).
+à laisser au cumulus. L'eau chaude garde la priorité **jusqu'à la cible du flow
+cumulus** (`reach_for`), c'est-à-dire la température qu'il cherche réellement à
+atteindre. Elle est relevée d'elle-même à 62 °C pendant un cycle anti-légionelle
+dû : la priorité suit, sans réglage.
+
+Suivre la cible plutôt qu'un seuil fixe évite un piège : réserver jusqu'à une
+température que le ballon **n'atteint jamais** (thermostat mécanique réglé plus
+bas, par exemple) gèlerait la réservation en permanence et le confort gratuit ne
+tournerait jamais. `HOT_WATER_PRIORITY_TEMP` permet malgré tout d'imposer un
+seuil fixe, à ne retenir que s'il est réellement atteignable ; `0` (défaut) suit
+la cible. L'attribut `hot_water_priority_temp` indique le seuil appliqué, et
+`hot_water_priority_follows_target` s'il est asservi ou forcé.
 
 | Situation du cumulus | Réservation |
 |---|---|
 | Déjà en chauffe (`cumulus_power ≥ 100 W`) | **0 W** — consommation déjà déduite du surplus mesuré au compteur |
 | Commandé ON, anti-injection, anti-légionelle en attente | **`CUMULUS_LOAD_W`** — démarrage imminent |
-| Eau sous `HOT_WATER_PRIORITY_TEMP` | **`CUMULUS_LOAD_W`** — priorité eau chaude |
-| Eau au-delà du seuil, ou cible couverte par le cumulus solaire amont | **0 W** — surplus libéré |
+| Eau sous la cible (`water_temp < reach_for`) | **`CUMULUS_LOAD_W`** — priorité eau chaude |
+| Eau à la cible, ou cible couverte par le cumulus solaire amont | **0 W** — surplus libéré |
 | Thermostat mécanique ouvert (`thermostat_tripped`) | **0 W** — aucune consommation possible, surplus inutilisable |
 | Automatisation cumulus désactivée, ou cumulus en pause manuelle | **0 W** — pas de demande |
-| Sensor introuvable ou température illisible | **`CUMULUS_LOAD_W`** — réservation par sécurité |
+| Sensor introuvable, température ou cible illisible | **`CUMULUS_LOAD_W`** — réservation par sécurité |
 
 ```
 available_w = (surplus réseau + conso des unités pilotées) − réservation cumulus
 ```
 
-⚠️ **Ballon incapable d'atteindre 60 °C** : la réservation serait alors
-permanente et la clim ne tournerait jamais. Deux échappatoires, dans cet ordre :
-la ligne `thermostat_tripped` ci-dessus (le thermostat mécanique coupe le
-circuit, le surplus est rendu au confort), et le réglage de
-`HOT_WATER_PRIORITY_TEMP` sous le maximum réellement atteint par le ballon.
-Attribut `hot_water_priority_temp` du sensor pour vérifier le seuil appliqué.
+La priorité reste effective **en cours de cycle** : dès que le cumulus redemande
+de l'énergie, `available_w` chute et la clim est délestée, au besoin sans
+attendre la temporisation anti court-cycle.
 
 ### Allocation par paliers, une unité à la fois
 
@@ -335,7 +338,7 @@ intérieur tranche seul.
 | `SOLAR_SENSOR` / `GRID_SENSOR` | `sensor.powermeter_power_a` / `_b` | Production solaire / échange réseau |
 | `CLIM_LOAD_W` | `800` | Coût d'un palier, à calibrer sur `observed_draw_per_unit_w` |
 | `CUMULUS_LOAD_W` | `1200` | Puissance du cumulus (montant réservé) |
-| `HOT_WATER_PRIORITY_TEMP` | `60` | Température jusqu'à laquelle l'eau chaude est prioritaire |
+| `HOT_WATER_PRIORITY_TEMP` | `0` | Seuil fixe de priorité eau chaude ; `0` suit la cible du cumulus |
 | `CLIM_MAX_UNITS` | `5` | Plafond d'unités simultanées |
 | `CLIM_MIN_RUN_MIN` / `CLIM_MIN_OFF_MIN` | `20` / `15` | Protection compresseur (min) |
 | `CLIM_HYST_MIN` | `5` | Confirmation d'un palier (min) |
@@ -548,7 +551,7 @@ Le fichier généré est versionné, et la CI échoue s'il diverge de ses source
 
 `.github/workflows/ci.yml`, sur chaque push et chaque PR :
 
-- `node tests/clim-flow-sim.js` — 34 scénarios, 175 assertions ;
+- `node tests/clim-flow-sim.js` — 35 scénarios, 180 assertions ;
 - `node tools/validate-repo.js` — invariants du dépôt, chacun correspondant à un
   défaut réellement rencontré : **`filename` désignant un `.js` et non une
   archive** (une archive déclarée comme ressource Lovelace cassait les deux
