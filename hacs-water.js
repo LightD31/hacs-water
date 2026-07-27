@@ -2207,6 +2207,7 @@ class ClimSolaireCard extends HTMLElement {
       return;
     }
     const a = st.attributes || {};
+    this._attrs = a;
     const mode = MODES[this._mode(st, a)] || MODES.idle;
 
     this.style.setProperty('--clc-accent', mode.color);
@@ -2355,7 +2356,30 @@ class ClimSolaireCard extends HTMLElement {
       return;
     }
     this._el.units.style.display = '';
-    const rows = a.units.map((u) => {
+
+    // Le réordonnancement n'est proposé que si le helper existe réellement :
+    // sans lui, l'ordre vient de CLIM_UNITS et n'est pas modifiable d'ici.
+    const helper = a.priority_helper;
+    const canReorder = !!(helper && this._hass.states[helper]);
+    if (!canReorder) this._reorder = false;
+
+    // Affichage optimiste : le flow met quelques secondes à republier son
+    // sensor, l'ordre demandé est donc appliqué localement en attendant.
+    const units = a.units.slice();
+    if (this._pendingOrder) {
+      const live = units.map((u) => u.entity_id).join(',');
+      if (live === this._pendingOrder.join(',') || Date.now() - this._pendingAt > 30000) {
+        this._pendingOrder = null;
+      } else {
+        const rank = (u) => {
+          const k = this._pendingOrder.indexOf(u.entity_id);
+          return k < 0 ? 999 : k;
+        };
+        units.sort((x, y) => rank(x) - rank(y));
+      }
+    }
+
+    const rows = units.map((u, i) => {
       const need = NEED[u.need_mode] || NEED.none;
       let badge = 'veille';
       let cls = 'idle';
@@ -2368,9 +2392,21 @@ class ClimSolaireCard extends HTMLElement {
       else if (u.mode_supported === false) { badge = 'mode absent'; cls = 'err'; }
 
       const target = u.store_target != null ? ` → ${fmtT(u.store_target)}` : '';
+      const arrows = this._reorder ? `
+          <span class="u-move">
+            <button class="mv" data-mv="up" data-i="${i}" ${i === 0 ? 'disabled' : ''}
+                    title="Monter" aria-label="Monter">
+              <ha-icon icon="mdi:chevron-up"></ha-icon>
+            </button>
+            <button class="mv" data-mv="down" data-i="${i}"
+                    ${i === units.length - 1 ? 'disabled' : ''}
+                    title="Descendre" aria-label="Descendre">
+              <ha-icon icon="mdi:chevron-down"></ha-icon>
+            </button>
+          </span>` : '';
       return `
-        <div class="unit ${cls}" data-entity="${esc(u.entity_id)}">
-          <span class="u-pri">${esc(u.priority)}</span>
+        <div class="unit ${cls}${this._reorder ? ' reordering' : ''}" data-entity="${esc(u.entity_id)}">
+          <span class="u-pri">${i + 1}</span>
           <span class="u-name">
             ${esc(u.label)}
             ${u.group ? `<span class="u-group">${esc(u.group)}</span>` : ''}
@@ -2380,13 +2416,70 @@ class ClimSolaireCard extends HTMLElement {
             <ha-icon icon="${need.icon}"></ha-icon>
           </span>
           <span class="u-badge">${esc(badge)}</span>
+          ${arrows}
         </div>`;
     }).join('');
 
-    this._el.units.innerHTML = `<div class="units-head">Pièces, par priorité</div>${rows}`;
+    const head = `
+      <div class="units-head">
+        <span>Pièces, par priorité</span>
+        ${canReorder ? `
+          <button class="info-btn${this._reorder ? ' on' : ''}" id="reorderBtn"
+                  title="Réordonner les priorités" aria-label="Réordonner les priorités">
+            <ha-icon icon="${this._reorder ? 'mdi:check' : 'mdi:swap-vertical'}"></ha-icon>
+          </button>` : ''}
+      </div>`;
+    const hint = this._reorder
+      ? `<div class="reorder-hint">Ordre de service du surplus : le premier servi est
+         le dernier délesté. Enregistré dans <code>${esc(helper)}</code>.</div>`
+      : '';
+    this._el.units.innerHTML = head + hint + rows;
+
     this._el.units.querySelectorAll('.unit').forEach((el) => {
-      el.addEventListener('click', () => this._moreInfo(el.dataset.entity));
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.u-move')) return;   // une flèche n'est pas un tap de ligne
+        this._moreInfo(el.dataset.entity);
+      });
     });
+    const btn = this.shadowRoot.getElementById('reorderBtn');
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._reorder = !this._reorder;
+        this._render();
+      });
+    }
+    this._el.units.querySelectorAll('.mv').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._movePriority(units, Number(el.dataset.i), el.dataset.mv === 'up' ? -1 : 1);
+      });
+    });
+  }
+
+  // Écrit le nouvel ordre dans le helper. Le flow y est abonné par un trigger,
+  // la prise en compte est donc immédiate ; l'affichage est optimiste en
+  // attendant que le sensor soit republié.
+  _movePriority(units, index, delta) {
+    const j = index + delta;
+    if (j < 0 || j >= units.length) return;
+    const order = units.map((u) => u.entity_id);
+    [order[index], order[j]] = [order[j], order[index]];
+
+    // Préfixe `climate.` retiré : un input_text plafonne à 255 caractères, et le
+    // flow accepte aussi bien l'entity_id complet que sa partie utile.
+    const value = order.map((id) => id.replace(/^climate\./, '')).join(',');
+    if (value.length > 255) {
+      console.error('CLIM-SOLAIRE-CARD : ordre trop long pour un input_text ('
+        + value.length + ' > 255 caractères), écriture abandonnée.');
+      return;
+    }
+
+    this._pendingOrder = order;
+    this._pendingAt = Date.now();
+    this._hass.callService('input_text', 'set_value',
+      { entity_id: this._attrs.priority_helper, value });
+    this._render();
   }
 
   _renderPills(a) {
@@ -2643,9 +2736,25 @@ class ClimSolaireCard extends HTMLElement {
       /* Pièces */
       .units { padding: 4px 18px 8px 18px; }
       .units-head {
+        display: flex; align-items: center; justify-content: space-between;
         font-size: 0.78rem; color: var(--clc-text-2); text-transform: uppercase;
         letter-spacing: 0.04em; margin-bottom: 4px;
       }
+      .info-btn.on { color: var(--clc-accent); }
+      .reorder-hint {
+        font-size: 0.72rem; color: var(--clc-text-2); line-height: 1.35;
+        padding: 2px 0 6px 0;
+      }
+      .reorder-hint code { font-size: 0.68rem; }
+      .unit.reordering { cursor: default; }
+      .u-move { display: flex; gap: 2px; }
+      .u-move .mv {
+        background: none; border: 1px solid var(--clc-divider); border-radius: 6px;
+        padding: 0; width: 26px; height: 24px; cursor: pointer;
+        color: var(--clc-text); display: grid; place-items: center;
+      }
+      .u-move .mv[disabled] { opacity: 0.3; cursor: default; }
+      .u-move .mv ha-icon { --mdc-icon-size: 16px; }
       .unit {
         display: grid; grid-template-columns: 18px 1fr auto 22px auto;
         gap: 8px; align-items: center; padding: 6px 0;
@@ -2732,6 +2841,7 @@ class ClimSolaireCard extends HTMLElement {
 
       @media (max-width: 460px) {
         .unit { grid-template-columns: 16px 1fr auto 20px; }
+        .u-move { grid-column: -2 / -1; }
         .u-badge { grid-column: 2 / -1; justify-self: start; }
       }
     `;

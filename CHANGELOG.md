@@ -2,6 +2,36 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.20.0] - 2026-07-27
+
+- **Ordre de priorité des pièces réordonnable depuis la carte.** L'ordre vivait
+  dans `CLIM_UNITS`, variable d'environnement Node-RED qu'une carte Lovelace ne
+  peut pas écrire. Il peut désormais être porté par un helper Home Assistant,
+  `input_text.clim_priority_order` (entité configurable par
+  `CLIM_PRIORITY_HELPER`), lu par le flow et écrit par la carte. Un trigger sur
+  cette entité rend la prise en compte immédiate.
+- **Carte** : bouton ⇅ dans l'en-tête de la liste des pièces, puis flèches
+  monter/descendre par ligne. Affichage optimiste pendant la republication du
+  sensor, numérotation recalculée, et garde-fou sur la limite de 255 caractères
+  d'un `input_text` — la carte refuse d'écrire plutôt que de tronquer l'ordre.
+  Le bouton n'apparaît que si le helper existe réellement. Un tap sur une flèche
+  n'ouvre pas la fiche de l'unité.
+- **Tolérance de lecture** : jetons acceptés en `entity_id` complet, en partie
+  après `climate.`, ou en libellé de pièce, pour que le helper reste éditable à
+  la main. Unité absente du helper conservée à la suite dans l'ordre de
+  `CLIM_UNITS`, jeton inconnu ignoré, helper vide ou illisible rendant l'ordre à
+  `CLIM_UNITS`. Nouvel attribut `priority_order_source`.
+- **Simulation** : quatre scénarios ajoutés — ordre appliqué et suivi par
+  l'allocation, jetons de formes variées, helper vide ou absent, et
+  réordonnancement en cours de route inversant le délestage. 38 scénarios,
+  199 assertions.
+- **Vérification de la carte** en navigateur : flèches absentes hors mode
+  réordonnancement, bornes désactivées en tête et en queue, `input_text.set_value`
+  appelé avec l'ordre attendu (145 caractères sur 255), réordonnancement
+  optimiste effectif, aucune erreur.
+- Fichiers modifiés : `flows-clim.json`, `clim-solaire-card.js`, `hacs-water.js`,
+  `tests/clim-flow-sim.js`, `README.md`, `CHANGELOG.md`.
+
 ## [v1.19.0] - 2026-07-27
 
 - **Priorité eau chaude asservie à la cible du cumulus.** Le seuil suit

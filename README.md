@@ -104,6 +104,11 @@ cumulus l'est pour son propre sensor.
   et cible de stockage, sens demandé, et badge d'état (en marche, veille,
   manuel, pause, disjoncteur, temporisation restante). Tap sur une ligne pour
   la fiche de l'unité.
+- **Réordonnancement des priorités** : bouton ⇅ dans l'en-tête de la liste, puis
+  flèches par pièce. L'ordre est écrit dans `input_text.clim_priority_order` et
+  **repris immédiatement par le flow**, qui est abonné à cette entité. Le premier
+  servi est le dernier délesté. Affichage optimiste pendant la republication du
+  sensor. Le bouton n'apparaît que si le helper existe.
 - **Pastilles** : production, surplus potentiel, réservation eau chaude avec son
   seuil, consommation mesurée aux disjoncteurs (part hors flow signalée),
   consommation observée par unité **avec alerte de calibration** si elle
@@ -224,6 +229,22 @@ l'ordre inverse, **une seule** ajoutée ou retirée par palier confirmé
 Ordre par défaut : Salon → Cuisine → Chambre Tom → Chambre Didier →
 Chambre Marie. Plafond réglable par `CLIM_MAX_UNITS`.
 
+**Ordre réordonnable sans toucher à Node-RED** : le helper
+`input_text.clim_priority_order` (entité configurable par
+`CLIM_PRIORITY_HELPER`) porte l'ordre de service, et la carte sait l'écrire. Le
+flow y est abonné par un trigger, la prise en compte est donc immédiate.
+
+Jetons acceptés, au choix, pour que le helper reste éditable à la main :
+`entity_id` complet, sa partie après `climate.`, ou le libellé de la pièce. Une
+unité absente du helper conserve sa place, à la suite, dans l'ordre de
+`CLIM_UNITS` ; un jeton inconnu est ignoré ; un helper vide, absent ou illisible
+rend l'ordre à `CLIM_UNITS`. L'attribut `priority_order_source` indique lequel
+des deux fait foi.
+
+> Un `input_text` plafonne à 255 caractères. Les cinq unités en occupent 145,
+> préfixe `climate.` retiré par la carte. Au-delà d'une huitaine d'unités, la
+> carte refuse d'écrire plutôt que de tronquer l'ordre.
+
 Le **délestage respecte strictement la priorité** : une unité plus prioritaire
 n'est jamais coupée parce qu'une moins prioritaire est encore retenue par son
 `min-run` (les unités ne démarrant pas ensemble, leurs temporisations
@@ -331,6 +352,7 @@ intérieur tranche seul.
 |---|---|---|
 | `CLIM_UNITS` | les 5 `climate.*` | Liste **ordonnée** des unités, priorité décroissante |
 | `CLIM_UNIT_LABELS` | `Salon,Cuisine,Chambre Tom,…` | Libellés d'affichage, même ordre |
+| `CLIM_PRIORITY_HELPER` | `input_text.clim_priority_order` | Helper portant l'ordre de service, écrit par la carte |
 | `CLIM_OUTDOOR_SENSOR` | *(vide)* | Sonde extérieure, optionnelle |
 | `CLIM_GROUPS` | 2 disjoncteurs | Groupes de disjoncteurs (JSON) : disjoncteur, compteur, pièces |
 | `CLIM_GROUP_STANDBY_W` | `5` | Veille d'un disjoncteur, retirée du récupérable |
@@ -385,7 +407,16 @@ input_select:                # optionnel, défaut auto
   clim_season_mode:
     name: Mode saison clim
     options: [auto, froid, chaud, arrêt]
+
+input_text:                  # optionnel, ordre de service des pièces
+  clim_priority_order:
+    name: Ordre de priorité clim
+    max: 255
+    icon: mdi:sort
 ```
+
+`clim_priority_order` est écrit par la carte via son bouton ⇅ ; le laisser vide
+conserve l'ordre de `CLIM_UNITS`.
 
 ### Sensor produit
 
@@ -491,7 +522,7 @@ seuil 60 °C, montée et délestage en paliers, ordre de priorité au délestage
 garde-fou import réseau, mesure par disjoncteur et repli sur estimation,
 disjoncteur coupé, calibration sur unités inverter à 250 W, pilotage manuel par
 unité, pause 45 min, temporisations compresseur, mode non supporté, unité
-injoignable, stockage, réalignement de consigne. Les compteurs de groupe font
+injoignable, stockage, réalignement de consigne, réordonnancement des priorités par le helper (ordre appliqué, jetons variés, helper vide, délestage inversé en cours de route). Les compteurs de groupe font
 partie du bouclage physique du harnais. Toute la décision vivant dans les nœuds
 `function`, le harnais rejoue le pipeline réel sans logique dupliquée.
 
@@ -551,7 +582,7 @@ Le fichier généré est versionné, et la CI échoue s'il diverge de ses source
 
 `.github/workflows/ci.yml`, sur chaque push et chaque PR :
 
-- `node tests/clim-flow-sim.js` — 35 scénarios, 180 assertions ;
+- `node tests/clim-flow-sim.js` — 38 scénarios, 199 assertions ;
 - `node tools/validate-repo.js` — invariants du dépôt, chacun correspondant à un
   défaut réellement rencontré : **`filename` désignant un `.js` et non une
   archive** (une archive déclarée comme ressource Lovelace cassait les deux

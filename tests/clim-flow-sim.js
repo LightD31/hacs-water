@@ -133,7 +133,8 @@ function states(o = {}) {
         targetCool: 25, targetHeat: 20, surplusTrig: null, outdoor: null,
         temps: [27, 27, 27, 27, 27],           // par unité, ordre de CLIM_UNITS
         hvac: ['off', 'off', 'off', 'off', 'off'],
-        cumulus: null, noCumulus: false, modes: null, breakers: null, ...o,
+        cumulus: null, noCumulus: false, modes: null, breakers: null,
+        order: null, ...o,
     };
     const st = {
         'sensor.powermeter_power_a': { state: String(d.solar) },
@@ -163,6 +164,9 @@ function states(o = {}) {
         st['sensor.temp_exterieur_temperature'] = { state: String(d.outdoor) };
     } else {
         ENV.CLIM_OUTDOOR_SENSOR = '';
+    }
+    if (d.order != null) {
+        st['input_text.clim_priority_order'] = { state: d.order };
     }
     if (d.surplusTrig != null) {
         st['input_number.clim_surplus_trigger'] = { state: String(d.surplusTrig) };
@@ -708,6 +712,75 @@ scenario('34. Aucun attribut null : contrainte du schéma du nœud sensor', () =
         check('état exploitable — ' + label,
             typeof m.sensor.state === 'string' && m.sensor.state.length > 0, m.sensor.state);
     }
+});
+
+scenario('35. Ordre de priorité piloté par le helper', () => {
+    // La carte écrit dans input_text.clim_priority_order ; le flow s'y conforme
+    // sans qu'on touche à CLIM_UNITS.
+    const ctx = makeCtx(states({
+        order: 'chambre_marie_room_temperature,salon_room_temperature',
+    }), 1000);
+    const m = run(ctx, 10);
+    check('ordre issu du helper', m.priorityOrderSource === 'helper',
+        String(m.priorityOrderSource));
+    check('Chambre Marie devient priorité 1',
+        m.units[0].label === 'Chambre Marie' && m.units[0].priority === 1,
+        m.units.map(u => u.label).join(' > '));
+    check('Salon en priorité 2', m.units[1].label === 'Salon', m.units[1].label);
+    check('le reliquat suit l\'ordre de CLIM_UNITS',
+        m.units.slice(2).map(u => u.label).join(',') === 'Cuisine,Chambre Tom,Chambre Didier',
+        m.units.slice(2).map(u => u.label).join(','));
+    check('les 5 unités sont conservées', m.units.length === 5, String(m.units.length));
+    check('l\'allocation suit le nouvel ordre',
+        onLabels(ctx).join(',') === 'Chambre Marie', onLabels(ctx).join(','));
+});
+
+scenario('36. Helper : entity_id complet, libellé, jeton inconnu', () => {
+    const ctx = makeCtx(states({
+        order: 'climate.chambre_tom_room_temperature, Cuisine , climate.inexistante',
+    }), 1000);
+    const m = run(ctx, 8);
+    check('entity_id complet accepté', m.units[0].label === 'Chambre Tom', m.units[0].label);
+    check('libellé accepté', m.units[1].label === 'Cuisine', m.units[1].label);
+    check('jeton inconnu ignoré, 5 unités', m.units.length === 5, String(m.units.length));
+    check('priorités renumérotées 1..5',
+        m.units.map(u => u.priority).join(',') === '1,2,3,4,5',
+        m.units.map(u => u.priority).join(','));
+});
+
+scenario('37. Helper vide ou absent : ordre de CLIM_UNITS', () => {
+    const vide = makeCtx(states({ order: '' }), 1000);
+    let m = run(vide, 6);
+    check('helper vide → ordre env', m.priorityOrderSource === 'env',
+        String(m.priorityOrderSource));
+    check('Salon reste priorité 1', m.units[0].label === 'Salon', m.units[0].label);
+    const absent = makeCtx(states({}), 1000);
+    m = run(absent, 6);
+    check('helper absent → ordre env', m.priorityOrderSource === 'env',
+        String(m.priorityOrderSource));
+    check('ordre par défaut intact',
+        m.units.map(u => u.label).join(',')
+            === 'Salon,Cuisine,Chambre Tom,Chambre Didier,Chambre Marie',
+        m.units.map(u => u.label).join(','));
+    check('entité du helper exposée',
+        m.priorityHelper === 'input_text.clim_priority_order', m.priorityHelper);
+});
+
+scenario('38. Réordonnancement en cours de route, délestage inversé', () => {
+    const ctx = makeCtx(states({}), 1800);
+    run(ctx, 14);
+    check('Salon et Cuisine en marche',
+        onLabels(ctx).join(',') === 'Salon,Cuisine', onLabels(ctx).join(','));
+    // L'utilisateur remonte la Cuisine en tête depuis la carte
+    ctx.states['input_text.clim_priority_order'] = { state: 'Cuisine,Salon' };
+    let m = run(ctx, 2);
+    check('nouvel ordre pris en compte', m.units[0].label === 'Cuisine', m.units[0].label);
+    // Le surplus baisse : le moins prioritaire est désormais le Salon
+    ctx.surplusBase = 1000;
+    m = run(ctx, 40);
+    check('une seule unité conservée', onCount(ctx) === 1, onLabels(ctx).join(','));
+    check('la Cuisine est conservée, le Salon délesté',
+        onLabels(ctx).join(',') === 'Cuisine', onLabels(ctx).join(','));
 });
 
 console.log('\n=== ' + pass + ' assertions OK, ' + fail + ' échecs ===');
