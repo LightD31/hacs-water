@@ -2,7 +2,7 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
-## [v1.16.0] - 2026-07-27
+## [v1.17.0] - 2026-07-27
 
 - **Publication de release automatisée** (`.github/workflows/release.yml`).
   Un `git push` de tag `v*` suffit : le workflow rejoue la simulation et les

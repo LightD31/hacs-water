@@ -36,6 +36,17 @@ jobs:
         with:
           node-version: '20'
 
+      # Un tag ancien (antérieur à l'outillage de release) produirait une
+      # release au contenu périmé. Échec explicite plutôt qu'un « fichier
+      # introuvable » quelques étapes plus loin.
+      - name: Le tag pointe-t-il sur une version outillée ?
+        run: |
+          for f in tools/validate-repo.js tools/build-hacs-zip.sh tests/clim-flow-sim.js; do
+            [ -f "$f" ] || {
+              echo "::error::$f absent de ce tag : il pointe sur un état du dépôt antérieur à l'outillage de release. Vérifier le tag." >&2
+              exit 1; }
+          done
+
       # Une release ne part pas avec un flow ou une carte cassés.
       - name: Simulation du flow climatisation
         run: node tests/clim-flow-sim.js
