@@ -1,0 +1,1599 @@
+[
+    {
+        "id": "c0f10000000000ab",
+        "type": "tab",
+        "label": "Climatisation Solaire",
+        "disabled": false,
+        "info": "# Climatisation et chauffage gratuits\n\nPilotage d'une clim réversible (ou pompe à chaleur air/air) sur le seul\nsurplus solaire, **après** service de l'eau chaude sanitaire.\n\nL'eau chaude garde la priorité absolue : la puissance du cumulus est\nréservée sur le surplus tant que son besoin n'est pas couvert, et la clim\nne dispose que du reliquat (`available_w`).\n\nFlow indépendant du flow « Cumulus Solaire V3 », qu'il lit seulement via\n`sensor.cumulus_automation`. Entités et constantes réglables dans l'onglet\nEnv de ce flow.\n",
+        "env": [
+            {
+                "name": "CLIM_ENTITY",
+                "value": "climate.clim",
+                "type": "str"
+            },
+            {
+                "name": "CLIM_INDOOR_SENSOR",
+                "value": "sensor.temp_salon_temperature",
+                "type": "str"
+            },
+            {
+                "name": "CLIM_OUTDOOR_SENSOR",
+                "value": "sensor.temp_exterieur_temperature",
+                "type": "str"
+            },
+            {
+                "name": "CLIM_POWER_SENSOR",
+                "value": "sensor.clim_power",
+                "type": "str"
+            },
+            {
+                "name": "CUMULUS_SENSOR",
+                "value": "sensor.cumulus_automation",
+                "type": "str"
+            },
+            {
+                "name": "SOLAR_SENSOR",
+                "value": "sensor.powermeter_power_a",
+                "type": "str"
+            },
+            {
+                "name": "GRID_SENSOR",
+                "value": "sensor.powermeter_power_b",
+                "type": "str"
+            },
+            {
+                "name": "CLIM_LOAD_W",
+                "value": "800",
+                "type": "num"
+            },
+            {
+                "name": "CUMULUS_LOAD_W",
+                "value": "1200",
+                "type": "num"
+            },
+            {
+                "name": "CLIM_MIN_RUN_MIN",
+                "value": "20",
+                "type": "num"
+            },
+            {
+                "name": "CLIM_MIN_OFF_MIN",
+                "value": "15",
+                "type": "num"
+            },
+            {
+                "name": "CLIM_HYST_MIN",
+                "value": "5",
+                "type": "num"
+            },
+            {
+                "name": "CLIM_STOP_RATIO",
+                "value": "0.75",
+                "type": "num"
+            },
+            {
+                "name": "CLIM_STORE_BAND",
+                "value": "1.5",
+                "type": "num"
+            },
+            {
+                "name": "CLIM_COOL_FLOOR",
+                "value": "21",
+                "type": "num"
+            },
+            {
+                "name": "CLIM_HEAT_CEILING",
+                "value": "23",
+                "type": "num"
+            },
+            {
+                "name": "CLIM_OUTDOOR_COOL_MIN",
+                "value": "24",
+                "type": "num"
+            },
+            {
+                "name": "CLIM_OUTDOOR_HEAT_MAX",
+                "value": "17",
+                "type": "num"
+            }
+        ]
+    },
+    {
+        "id": "c0f1000000000001",
+        "type": "group",
+        "z": "c0f10000000000ab",
+        "name": "📡 Triggers",
+        "style": {
+            "label": true,
+            "fill": "#eaf6ff",
+            "color": "#1f4e79"
+        },
+        "nodes": [
+            "c0f1000000000005",
+            "c0f1000000000006",
+            "c0f1000000000007",
+            "c0f1000000000008",
+            "c0f1000000000009",
+            "c0f100000000000a",
+            "c0f100000000000b",
+            "c0f100000000000c"
+        ],
+        "x": 44,
+        "y": 199,
+        "w": 252,
+        "h": 502
+    },
+    {
+        "id": "c0f1000000000002",
+        "type": "group",
+        "z": "c0f10000000000ab",
+        "name": "🔍 Lecture & Calculs",
+        "style": {
+            "label": true,
+            "fill": "#fff8e1",
+            "color": "#7f4f00"
+        },
+        "nodes": [
+            "c0f100000000000e",
+            "c0f100000000000f",
+            "c0f1000000000010",
+            "c0f1000000000011",
+            "c0f1000000000012"
+        ],
+        "x": 344,
+        "y": 319,
+        "w": 1252,
+        "h": 82
+    },
+    {
+        "id": "c0f1000000000003",
+        "type": "group",
+        "z": "c0f10000000000ab",
+        "name": "🌳 Arbre de décision",
+        "style": {
+            "label": true,
+            "fill": "#e8f5e9",
+            "color": "#1b5e20"
+        },
+        "nodes": [
+            "c0f1000000000013",
+            "c0f1000000000014",
+            "c0f1000000000015",
+            "c0f1000000000016",
+            "c0f1000000000017",
+            "c0f1000000000018",
+            "c0f1000000000019",
+            "c0f100000000001a",
+            "c0f100000000001b",
+            "c0f100000000001c",
+            "c0f100000000001d",
+            "c0f100000000001e",
+            "c0f100000000001f",
+            "c0f1000000000020"
+        ],
+        "x": 1614,
+        "y": 199,
+        "w": 622,
+        "h": 762
+    },
+    {
+        "id": "c0f1000000000004",
+        "type": "group",
+        "z": "c0f10000000000ab",
+        "name": "🎯 Action & Sensor",
+        "style": {
+            "label": true,
+            "fill": "#fce4ec",
+            "color": "#880e4f"
+        },
+        "nodes": [
+            "c0f1000000000021",
+            "c0f1000000000022",
+            "c0f1000000000023",
+            "c0f1000000000024",
+            "c0f1000000000025",
+            "c0f1000000000026",
+            "c0f1000000000027",
+            "c0f1000000000028",
+            "c0f1000000000029",
+            "c0f100000000002a",
+            "c0f100000000002b"
+        ],
+        "x": 2264,
+        "y": 259,
+        "w": 892,
+        "h": 482
+    },
+    {
+        "id": "c0f100000000002e",
+        "type": "comment",
+        "z": "c0f10000000000ab",
+        "name": "📡 Déclencheurs",
+        "info": "Réévaluation complète à chaque événement. Le tick d'une minute garantit une réévaluation même si une entité est renommée.",
+        "x": 160,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "c0f100000000002f",
+        "type": "comment",
+        "z": "c0f10000000000ab",
+        "name": "🔍 Lecture & Calculs (pipeline)",
+        "info": "5 étapes atomiques : lecture, pilotage manuel, priorité eau chaude, besoin de confort, hystérésis et anti court-cycle.",
+        "x": 500,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "c0f1000000000030",
+        "type": "comment",
+        "z": "c0f10000000000ab",
+        "name": "🌳 Arbre de décision (priorité ↓)",
+        "info": "Une priorité par switch. Sortie 1, continuation. Sortie 2, action terminale. L'eau chaude passe avant le confort (priorité 5).",
+        "x": 1790,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "c0f1000000000031",
+        "type": "comment",
+        "z": "c0f10000000000ab",
+        "name": "🎯 Action & Sensor",
+        "info": "Commande de la clim (mode + consigne) uniquement si le flow en est propriétaire, puis mise à jour du sensor.",
+        "x": 2360,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "c0f1000000000005",
+        "type": "server-state-changed",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000001",
+        "name": "Solaire change",
+        "server": "1a7a75b5.c29f2a",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "sensor.powermeter_power_a"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "",
+        "ifStateType": "str",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "seconds",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": false,
+        "ignoreCurrentStateUnavailable": false,
+        "outputProperties": [],
+        "x": 160,
+        "y": 240,
+        "wires": [
+            [
+                "c0f100000000000d"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000006",
+        "type": "server-state-changed",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000001",
+        "name": "Réseau change",
+        "server": "1a7a75b5.c29f2a",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "sensor.powermeter_power_b"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "",
+        "ifStateType": "str",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "seconds",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": false,
+        "ignoreCurrentStateUnavailable": false,
+        "outputProperties": [],
+        "x": 160,
+        "y": 300,
+        "wires": [
+            [
+                "c0f100000000000d"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000007",
+        "type": "server-state-changed",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000001",
+        "name": "Temp intérieure change",
+        "server": "1a7a75b5.c29f2a",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "sensor.temp_salon_temperature"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "",
+        "ifStateType": "str",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "seconds",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": false,
+        "ignoreCurrentStateUnavailable": false,
+        "outputProperties": [],
+        "x": 160,
+        "y": 360,
+        "wires": [
+            [
+                "c0f100000000000d"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000008",
+        "type": "server-state-changed",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000001",
+        "name": "Temp extérieure change",
+        "server": "1a7a75b5.c29f2a",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "sensor.temp_exterieur_temperature"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "",
+        "ifStateType": "str",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "seconds",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": false,
+        "ignoreCurrentStateUnavailable": false,
+        "outputProperties": [],
+        "x": 160,
+        "y": 420,
+        "wires": [
+            [
+                "c0f100000000000d"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000009",
+        "type": "server-state-changed",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000001",
+        "name": "Toggle auto change",
+        "server": "1a7a75b5.c29f2a",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "input_boolean.clim_automation_enabled"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "",
+        "ifStateType": "str",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "seconds",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": false,
+        "ignoreCurrentStateUnavailable": false,
+        "outputProperties": [],
+        "x": 160,
+        "y": 480,
+        "wires": [
+            [
+                "c0f100000000000d"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000000a",
+        "type": "server-state-changed",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000001",
+        "name": "Cumulus change",
+        "server": "1a7a75b5.c29f2a",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "sensor.cumulus_automation"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "",
+        "ifStateType": "str",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "seconds",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": false,
+        "ignoreCurrentStateUnavailable": false,
+        "outputProperties": [],
+        "x": 160,
+        "y": 540,
+        "wires": [
+            [
+                "c0f100000000000d"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000000b",
+        "type": "server-state-changed",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000001",
+        "name": "Clim change",
+        "server": "1a7a75b5.c29f2a",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "climate.clim"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "",
+        "ifStateType": "str",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "seconds",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": false,
+        "ignoreCurrentStateUnavailable": false,
+        "outputProperties": [],
+        "x": 160,
+        "y": 600,
+        "wires": [
+            [
+                "c0f100000000000d"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000000c",
+        "type": "inject",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000001",
+        "name": "Tick 1 min",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "60",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "8",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 160,
+        "y": 660,
+        "wires": [
+            [
+                "c0f100000000000d"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000000d",
+        "type": "delay",
+        "z": "c0f10000000000ab",
+        "name": "Anti-rafale (1 msg / 10 s)",
+        "pauseType": "rate",
+        "timeout": "5",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "10",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": true,
+        "allowrate": false,
+        "outputs": 1,
+        "x": 300,
+        "y": 720,
+        "wires": [
+            [
+                "c0f100000000000e"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000000e",
+        "type": "function",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000002",
+        "name": "Lire capteurs",
+        "func": "// === Lecture brute des entités HA (climatisation / chauffage gratuits) ===\n// Getters + suivi de disponibilité des sondes. Pas de logique métier ici.\n// PREREQUIS : cocher \"Enable global context store\" sur le nœud serveur HA.\n// Toutes les entités sont réglables par les variables d'environnement de\n// l'onglet (bouton ≡ → Flows → Climatisation Solaire → Env).\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nlet g;\ntry {\n    g = global.get('homeassistant').homeAssistant.states;\n    if (!g) throw new Error('states indisponibles');\n} catch (e) {\n    node.warn('HA indisponible, tick ignoré : ' + e.message);\n    return null;\n}\n\nconst eStr = (k, def) => {\n    const v = env.get(k);\n    return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst eNum = (k, def) => {\n    const v = parseFloat(env.get(k));\n    return isNaN(v) ? def : v;\n};\nconst n = (id, def = 0) => {\n    const v = parseFloat(g[id]?.state);\n    return isNaN(v) ? def : v;\n};\nconst numOrNull = (id) => {\n    const raw = g[id]?.state;\n    if (raw === undefined || raw === 'unavailable' || raw === 'unknown') return null;\n    const v = parseFloat(raw);\n    return isNaN(v) ? null : v;\n};\nconst clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\n\n// --- Entités ---\nmsg.climEntity = eStr('CLIM_ENTITY', 'climate.clim');\nconst indoorId = eStr('CLIM_INDOOR_SENSOR', 'sensor.temp_salon_temperature');\nconst outdoorId = eStr('CLIM_OUTDOOR_SENSOR', 'sensor.temp_exterieur_temperature');\nconst climPowerId = eStr('CLIM_POWER_SENSOR', 'sensor.clim_power');\nconst solarId = eStr('SOLAR_SENSOR', 'sensor.powermeter_power_a');\nconst gridId = eStr('GRID_SENSOR', 'sensor.powermeter_power_b');\nmsg.cumulusSensor = eStr('CUMULUS_SENSOR', 'sensor.cumulus_automation');\n\n// --- Constantes du modèle ---\nmsg.climLoadW = clamp(eNum('CLIM_LOAD_W', 800), 100, 10000);\nmsg.cumulusLoadW = clamp(eNum('CUMULUS_LOAD_W', 1200), 100, 10000);\nmsg.minRunMs = clamp(eNum('CLIM_MIN_RUN_MIN', 20), 0, 240) * 60000;\nmsg.minOffMs = clamp(eNum('CLIM_MIN_OFF_MIN', 15), 0, 240) * 60000;\nmsg.hystMs = clamp(eNum('CLIM_HYST_MIN', 5), 1, 60) * 60000;\nmsg.stopRatio = clamp(eNum('CLIM_STOP_RATIO', 0.75), 0, 1);\nmsg.storeBand = clamp(eNum('CLIM_STORE_BAND', 1.5), 0, 6);\nmsg.coolFloor = eNum('CLIM_COOL_FLOOR', 21);\nmsg.heatCeiling = eNum('CLIM_HEAT_CEILING', 23);\nmsg.outdoorCoolMin = eNum('CLIM_OUTDOOR_COOL_MIN', 24);\nmsg.outdoorHeatMax = eNum('CLIM_OUTDOOR_HEAT_MAX', 17);\n\n// --- Paramètres utilisateur (helpers HA) ---\nmsg.enabled = g['input_boolean.clim_automation_enabled']?.state === 'on';\nmsg.targetCool = clamp(n('input_number.clim_target_cool', 25), 18, 32);\nmsg.targetHeat = clamp(n('input_number.clim_target_heat', 20), 12, 26);\n\n// Seuil de surplus requis pour démarrer. Défaut : puissance de la clim, donc\n// aucun watt pris au réseau. Helper absent ou à 0 → défaut.\nconst trigRaw = numOrNull('input_number.clim_surplus_trigger');\nmsg.surplusTrig = (trigRaw != null && trigRaw > 0) ? Math.round(trigRaw) : Math.round(msg.climLoadW);\n\n// Mode saison (helper optionnel) : auto / froid / chaud / arrêt\nconst SEASON_MAP = {\n    auto: 'auto', froid: 'froid', chaud: 'chaud', 'arrêt': 'arret', arret: 'arret',\n    cool: 'froid', heat: 'chaud', off: 'arret'\n};\nconst seasonRaw = String(g['input_select.clim_season_mode']?.state || 'auto').toLowerCase();\nmsg.seasonMode = SEASON_MAP[seasonRaw] || 'auto';\n\n// --- Sondes de température ---\nmsg.indoorTemp = numOrNull(indoorId);\nmsg.indoorAvailable = msg.indoorTemp != null;\nmsg.outdoorTemp = numOrNull(outdoorId);\nmsg.outdoorAvailable = msg.outdoorTemp != null;\n\n// Suivi d'indisponibilité de la sonde intérieure (notification)\nconst nowMs = Date.now();\nif (msg.indoorAvailable) {\n    setF('sondeDownSince', null);\n    msg.sondeDownHours = 0;\n} else {\n    let ds = getF('sondeDownSince');\n    if (!ds) { ds = nowMs; setF('sondeDownSince', ds); }\n    msg.sondeDownHours = Math.round((nowMs - ds) / 360000) / 10;\n}\n\n// --- Mesures électriques ---\nmsg.solar = n(solarId, 0);\nmsg.gridPower = n(gridId, 0);   // > 0 import réseau, < 0 injection\nmsg.surplus = -msg.gridPower;\nmsg.climPower = n(climPowerId, 0);\n\n// --- État de la climatisation ---\n// Pas de coercition 'unavailable' → 'off' : au reboot HA l'entité passe par\n// des états transitoires. Repli sur le dernier état connu, comme le flow\n// cumulus, pour éviter une fausse détection de pilotage manuel.\nconst climState = g[msg.climEntity];\nconst rawHvac = climState?.state;\nmsg.climAvailable = rawHvac !== undefined && rawHvac !== 'unavailable' && rawHvac !== 'unknown';\nmsg.hvacMode = msg.climAvailable ? rawHvac : (getF('lastKnownHvac') || 'off');\nif (msg.climAvailable) setF('lastKnownHvac', rawHvac);\nmsg.climOn = msg.hvacMode !== 'off';\nmsg.hvacAction = climState?.attributes?.hvac_action || null;\nconst spRaw = parseFloat(climState?.attributes?.temperature);\nmsg.climSetpoint = isNaN(spRaw) ? null : spRaw;\nmsg.hvacModes = climState?.attributes?.hvac_modes || [];\n\n// --- Cumulus : lecture du sensor du flow eau chaude (priorité absolue) ---\nconst cu = g[msg.cumulusSensor];\nmsg.cumulusFound = !!cu;\nconst ca = (cu && cu.attributes) || {};\nmsg.cumulus = {\n    enabled: ca.enabled === true,\n    desired: ca.desired || null,\n    currentSwitch: ca.current_switch || null,\n    power: parseFloat(ca.cumulus_power),\n    waterTemp: parseFloat(ca.water_temp),\n    reachFor: parseFloat(ca.reach_for),\n    solarCoversTarget: ca.solar_covers_target === true,\n    antiInjection: ca.anti_injection_useful === true || ca.anti_injection_active === true,\n    legionellaPending: ca.legionella_critical_pending === true || ca.legionella_critical === true,\n    thermostatTripped: ca.thermostat_tripped === true,\n    manualHold: ca.manual_hold_active === true\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 440,
+        "y": 360,
+        "wires": [
+            [
+                "c0f100000000000f"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000000f",
+        "type": "function",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000002",
+        "name": "Détect. pilotage manuel",
+        "func": "// === Détection du pilotage manuel de la climatisation ===\n// Deux garde-fous distincts :\n//  - PROPRIÉTÉ : une clim allumée à la main n'est jamais coupée par le flow\n//    (climOwned = false, aucune commande d'arrêt). Le confort demandé par\n//    l'utilisateur reste prioritaire sur l'économie.\n//  - PAUSE : tout changement d'état non commandé par le flow met\n//    l'automatisation en pause 45 min (même principe que le flow cumulus).\n// États non exploitables (unavailable/unknown, typiquement au reboot HA)\n// ignorés par la détection, sinon chaque redémarrage déclencherait une\n// fausse intervention manuelle.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst MANUAL_HOLD_MS = 45 * 60 * 1000;\nconst HA_LAG_GRACE_MS = 90 * 1000;   // tolérance de propagation d'état HA\nconst now = Date.now();\n\nlet expected = getF('expectedHvac');\nif (expected == null && msg.climAvailable) {\n    expected = msg.hvacMode;\n    setF('expectedHvac', expected);\n}\nconst prevActionAt = getF('lastActionAt') || 0;\nlet holdUntil = getF('manualHoldUntil') || 0;\nlet owned = getF('climOwned') === true;\n\nif (msg.climAvailable && expected != null\n    && msg.hvacMode !== expected\n    && (now - prevActionAt) > HA_LAG_GRACE_MS) {\n    holdUntil = now + MANUAL_HOLD_MS;\n    setF('manualHoldUntil', holdUntil);\n    expected = msg.hvacMode;\n    setF('expectedHvac', expected);\n    owned = false;                       // reprise en main par l'utilisateur\n    setF('climOwned', false);\n    node.warn('Pilotage manuel de la clim détecté → pause automatisation 45 min');\n}\n\n// Clim à l'arrêt : plus rien à revendiquer\nif (!msg.climOn && owned) {\n    owned = false;\n    setF('climOwned', false);\n}\n\nmsg.climOwned = owned;\nmsg.manualHoldActive = msg.enabled && now < holdUntil;\nmsg.manualHoldUntil = holdUntil > now ? holdUntil : null;\n// Clim en marche sans que le flow l'ait allumée : hors de son périmètre\nmsg.manualControl = msg.climOn && !owned;\n\n// Libellés prêts à afficher (le nœud de décision se contente de les recopier)\nif (msg.manualControl) {\n    msg.manualLabel = 'Pilotage manuel';\n    msg.manualReason = 'Climatisation allumée hors automatisation, arrêt non commandé';\n} else if (msg.manualHoldActive) {\n    msg.manualLabel = 'Pause (commande manuelle)';\n    msg.manualReason = 'Intervention manuelle détectée, reprise à '\n        + new Date(holdUntil).toLocaleTimeString('fr-FR');\n}\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 690,
+        "y": 360,
+        "wires": [
+            [
+                "c0f1000000000010"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000010",
+        "type": "function",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000002",
+        "name": "Priorité eau chaude",
+        "func": "// === Priorité absolue à l'eau chaude ===\n// Le surplus solaire finance d'abord le cumulus : la climatisation ne dispose\n// que du reliquat. Deux situations à ne pas confondre, sous peine de compter\n// deux fois la même énergie :\n//   - cumulus DÉJÀ en chauffe : sa consommation est déjà retirée du surplus\n//     mesuré au compteur réseau, aucune réservation supplémentaire ;\n//   - cumulus à l'arrêt avec un besoin d'eau chaude non couvert : sa puissance\n//     est RÉSERVÉE, la clim ne doit pas manger le surplus qui lui permettra de\n//     démarrer (son hystérésis met 5 min à conclure).\n// Sensor cumulus absent ou illisible : réservation par défaut, l'eau chaude ne\n// perd jamais son surplus à cause d'une lecture manquante.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst CUMULUS_MIN_POWER_W = 100;\nconst CLIM_MIN_POWER_W = 50;\nconst STARTUP_GRACE_MS = 90 * 1000;   // compresseur + compteur lent\n\nconst now = Date.now();\nconst c = msg.cumulus || {};\n\n// --- Consommation propre de la clim ---\n// Nécessaire pour raisonner en surplus « potentiel » (surplus qu'on aurait si\n// la clim était à l'arrêt), seule base stable pour décider d'un arrêt.\nconst lastAction = getF('lastAction');\nconst lastActionAt = getF('lastActionAt') || 0;\nconst justStarted = lastAction === 'on' && msg.climOn\n    && (now - lastActionAt) < STARTUP_GRACE_MS;\n\nlet climDraw;\nif (!msg.climOn) {\n    climDraw = 0;\n} else if (msg.climPower >= CLIM_MIN_POWER_W) {\n    climDraw = msg.climPower;            // mesure réelle\n} else if (justStarted) {\n    climDraw = msg.climLoadW;            // démarrage, compteur pas rafraîchi\n} else {\n    climDraw = 0;                        // compresseur au repos (consigne atteinte)\n}\nmsg.climDraw = Math.round(climDraw);\nmsg.climIdle = msg.climOn && climDraw === 0;\n\nconst potentialSurplus = msg.surplus + climDraw;\nmsg.potentialSurplus = Math.round(potentialSurplus);\n\n// --- Réservation eau chaude ---\nlet reserve = 0;\nlet reason;\nif (!msg.cumulusFound) {\n    reserve = msg.cumulusLoadW;\n    reason = 'sensor cumulus introuvable, réservation par sécurité';\n} else if (!c.enabled) {\n    reserve = 0;\n    reason = 'automatisation cumulus désactivée';\n} else if (!isNaN(c.power) && c.power >= CUMULUS_MIN_POWER_W) {\n    reserve = 0;\n    reason = 'cumulus en chauffe, consommation déjà déduite du surplus mesuré';\n} else if (c.thermostatTripped && c.currentSwitch === 'on') {\n    reserve = 0;\n    reason = 'thermostat mécanique du cumulus ouvert, aucune consommation possible';\n} else if (c.manualHold) {\n    reserve = 0;\n    reason = 'cumulus en pause manuelle';\n} else if (c.desired === 'on') {\n    reserve = msg.cumulusLoadW;\n    reason = 'cumulus commandé ON, démarrage imminent';\n} else if (c.antiInjection) {\n    reserve = msg.cumulusLoadW;\n    reason = 'anti-injection cumulus actif';\n} else if (c.legionellaPending) {\n    reserve = msg.cumulusLoadW;\n    reason = 'cycle anti-légionelle en attente';\n} else if (c.solarCoversTarget) {\n    reserve = 0;\n    reason = 'cible eau chaude couverte par le cumulus solaire amont';\n} else if (isNaN(c.waterTemp) || isNaN(c.reachFor)) {\n    reserve = msg.cumulusLoadW;\n    reason = 'température d\\'eau illisible, réservation par sécurité';\n} else if (c.waterTemp < c.reachFor) {\n    reserve = msg.cumulusLoadW;\n    reason = 'eau à ' + c.waterTemp + '°C sous la cible ' + c.reachFor + '°C';\n} else {\n    reserve = 0;\n    reason = 'eau chaude à la cible, surplus libéré pour le confort';\n}\n\nmsg.cumulusReserveW = Math.round(reserve);\nmsg.cumulusReserveReason = reason;\nmsg.hotWaterPriority = reserve > 0;\n\n// --- Surplus réellement disponible pour la clim ---\nmsg.availableW = Math.round(potentialSurplus - reserve);\n// Préemption : le surplus aurait suffi au confort, la réservation eau chaude\n// le lui retire. C'est le cas à afficher, distinct d'un simple manque de soleil.\nmsg.preemptedByHotWater = reserve > 0\n    && potentialSurplus > msg.surplusTrig\n    && msg.availableW < msg.surplusTrig;\n\n// --- Estimation de l'énergie consommée par les cycles du flow (jour) ---\nconst lastSampleAt = getF('lastSampleAt');\nlet dtMs = lastSampleAt ? now - lastSampleAt : 0;\nif (dtMs < 0 || dtMs > 10 * 60000) dtMs = 0;   // reprise après coupure : pas d'extrapolation\nsetF('lastSampleAt', now);\n\nconst dayKey = new Date(now).toISOString().slice(0, 10);\nif (getF('energyDay') !== dayKey) {\n    setF('energyDay', dayKey);\n    setF('climWhToday', 0);\n}\nlet wh = getF('climWhToday') || 0;\nif (msg.climOwned && climDraw > 0) wh += climDraw * (dtMs / 3600000);\nsetF('climWhToday', wh);\nmsg.climKwhToday = Math.round(wh / 10) / 100;\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 940,
+        "y": 360,
+        "wires": [
+            [
+                "c0f1000000000011"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000011",
+        "type": "function",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000002",
+        "name": "Besoin confort & mode",
+        "func": "// === Besoin de confort et sens de fonctionnement (froid / chaud) ===\n// Cible « gratuite » = confort de base réglé par l'utilisateur, avec un\n// dépassement volontaire (CLIM_STORE_BAND) pour stocker l'énergie gratuite\n// dans l'inertie du bâtiment, exactement comme le cumulus sert de batterie\n// thermique. Dépassement borné par CLIM_COOL_FLOOR / CLIM_HEAT_CEILING, pour\n// éviter l'inconfort inverse.\n// Mode latché pendant un cycle : pas de bascule froid ↔ chaud en cours de route.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nmsg.needMode = 'none';        // 'cool' | 'heat' | 'none'\nmsg.comfortTarget = null;\nmsg.storeTarget = null;\nmsg.needReason = null;\n\nif (!msg.indoorAvailable) {\n    msg.needReason = 'Sonde intérieure indisponible';\n    setF('modeLatch', null);\n    return msg;\n}\nif (msg.seasonMode === 'arret') {\n    msg.needReason = 'Mode saison sur arrêt';\n    setF('modeLatch', null);\n    return msg;\n}\n\nconst t = msg.indoorTemp;\nconst outdoor = msg.outdoorAvailable ? msg.outdoorTemp : null;\n\n// Sens autorisé : forcé par le mode saison, ou déduit de l'extérieur en auto.\n// Sonde extérieure absente : les deux sens restent possibles, l'écart intérieur\n// tranche seul.\nconst canCool = msg.seasonMode === 'froid'\n    || (msg.seasonMode === 'auto' && (outdoor == null || outdoor >= msg.outdoorCoolMin));\nconst canHeat = msg.seasonMode === 'chaud'\n    || (msg.seasonMode === 'auto' && (outdoor == null || outdoor <= msg.outdoorHeatMax));\n\n// Cibles de stockage (bornées par les garde-fous de confort)\nconst coolStore = Math.max(msg.targetCool - msg.storeBand, msg.coolFloor);\nconst heatStore = Math.min(msg.targetHeat + msg.storeBand, msg.heatCeiling);\n\nconst latch = getF('modeLatch');\nconst running = msg.climOn === true;\n\nlet mode = 'none';\nif (canCool && t > msg.targetCool) {\n    mode = 'cool';\n} else if (canHeat && t < msg.targetHeat) {\n    mode = 'heat';\n} else if (running && latch === 'cool' && canCool && t > coolStore) {\n    mode = 'cool';               // poursuite du cycle jusqu'à la cible de stockage\n} else if (running && latch === 'heat' && canHeat && t < heatStore) {\n    mode = 'heat';\n}\n\nif (mode === 'cool') {\n    msg.comfortTarget = msg.targetCool;\n    msg.storeTarget = Math.round(coolStore * 10) / 10;\n    msg.needReason = t > msg.targetCool\n        ? 'Intérieur ' + t + '°C au-dessus de la cible froid ' + msg.targetCool + '°C'\n        : 'Stockage de fraîcheur jusqu\\'à ' + msg.storeTarget + '°C';\n} else if (mode === 'heat') {\n    msg.comfortTarget = msg.targetHeat;\n    msg.storeTarget = Math.round(heatStore * 10) / 10;\n    msg.needReason = t < msg.targetHeat\n        ? 'Intérieur ' + t + '°C sous la cible chaud ' + msg.targetHeat + '°C'\n        : 'Stockage de chaleur jusqu\\'à ' + msg.storeTarget + '°C';\n} else if (!canCool && !canHeat) {\n    msg.needReason = 'Saison neutre'\n        + (outdoor != null ? ' (extérieur ' + outdoor + '°C)' : '');\n} else {\n    msg.needReason = 'Confort déjà assuré (' + t + '°C, cibles '\n        + msg.targetHeat + '–' + msg.targetCool + '°C)';\n}\n\nmsg.needMode = mode;\nmsg.canCool = canCool;\nmsg.canHeat = canHeat;\nsetF('modeLatch', mode === 'none' ? null : mode);\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1190,
+        "y": 360,
+        "wires": [
+            [
+                "c0f1000000000012"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000012",
+        "type": "function",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000002",
+        "name": "Hyst. surplus & anti court-cycle",
+        "func": "// === Hystérésis du surplus + protection anti court-cycle ===\n// Démarrage : surplus disponible (après réservation eau chaude) au-dessus du\n// seuil pendant CLIM_HYST_MIN. Arrêt : sous le seuil d'arrêt pendant la même\n// durée. Entre les deux, zone morte : aucun changement, les nuages passagers\n// ne font pas claquer le compresseur.\n// Anti court-cycle : ni démarrage avant CLIM_MIN_OFF_MIN d'arrêt, ni arrêt\n// avant CLIM_MIN_RUN_MIN de marche (usure du compresseur).\n// Échappatoire : import réseau franc (surplus disponible ≤ 0) pendant plus de\n// HARD_STOP_MS → arrêt immédiat malgré la temporisation. C'est ce qui rend la\n// priorité eau chaude effective même en plein cycle.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst HARD_STOP_MS = 2 * 60 * 1000;\nconst now = Date.now();\n\nconst trig = msg.surplusTrig;\nconst stopTrig = Math.round(trig * msg.stopRatio);\nmsg.stopTrigger = stopTrig;\n\nlet highSince = getF('highSurplusSince');\nlet lowSince = getF('lowSurplusSince');\n\nif (msg.availableW > trig) {\n    if (!highSince) { highSince = now; setF('highSurplusSince', now); }\n    setF('lowSurplusSince', null);\n    msg.surplusHigh = (now - highSince) > msg.hystMs;\n    msg.surplusLow = false;\n} else if (msg.availableW < stopTrig) {\n    if (!lowSince) { lowSince = now; setF('lowSurplusSince', now); }\n    setF('highSurplusSince', null);\n    msg.surplusHigh = false;\n    msg.surplusLow = (now - lowSince) > msg.hystMs;\n} else {\n    setF('highSurplusSince', null);\n    setF('lowSurplusSince', null);\n    msg.surplusHigh = false;\n    msg.surplusLow = false;\n}\n\n// --- Arrêt d'urgence sur import réseau soutenu ---\nlet hardSince = getF('hardStopSince');\nif (msg.availableW <= 0) {\n    if (!hardSince) { hardSince = now; setF('hardStopSince', now); }\n    msg.hardStop = (now - hardSince) > HARD_STOP_MS;\n} else {\n    setF('hardStopSince', null);\n    msg.hardStop = false;\n}\n\n// --- Anti court-cycle ---\nconst lastOnAt = getF('lastOnAt') || 0;\nconst lastOffAt = getF('lastOffAt') || 0;\nmsg.canStart = !msg.climOn && (now - lastOffAt) >= msg.minOffMs;\nmsg.canStop = msg.climOn && (now - lastOnAt) >= msg.minRunMs;\nmsg.minRunLeftMin = msg.climOn\n    ? Math.max(0, Math.ceil((msg.minRunMs - (now - lastOnAt)) / 60000)) : 0;\nmsg.minOffLeftMin = !msg.climOn\n    ? Math.max(0, Math.ceil((msg.minOffMs - (now - lastOffAt)) / 60000)) : 0;\n\n// Verdict surplus : en marche, on continue tant que rien ne dit d'arrêter ;\n// à l'arrêt, il faut un surplus confirmé pour démarrer.\nmsg.surplusOk = msg.climOn\n    ? !(msg.surplusLow || msg.hardStop)\n    : msg.surplusHigh === true;\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1470,
+        "y": 360,
+        "wires": [
+            [
+                "c0f1000000000013"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000013",
+        "type": "switch",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "1. Automatisation active ?",
+        "property": "enabled",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "true"
+            },
+            {
+                "t": "false"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 1760,
+        "y": 240,
+        "wires": [
+            [
+                "c0f1000000000014"
+            ],
+            [
+                "c0f100000000001a"
+            ]
+        ],
+        "outputLabels": [
+            "oui → suite",
+            "non → maintien"
+        ]
+    },
+    {
+        "id": "c0f1000000000014",
+        "type": "switch",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "2. Pilotage manuel ?",
+        "property": "manualHoldActive or manualControl",
+        "propertyType": "jsonata",
+        "rules": [
+            {
+                "t": "false"
+            },
+            {
+                "t": "true"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 1760,
+        "y": 320,
+        "wires": [
+            [
+                "c0f1000000000015"
+            ],
+            [
+                "c0f100000000001b"
+            ]
+        ],
+        "outputLabels": [
+            "non → suite",
+            "oui → maintien"
+        ]
+    },
+    {
+        "id": "c0f1000000000015",
+        "type": "switch",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "3. Sonde intérieure OK ?",
+        "property": "indoorAvailable",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "true"
+            },
+            {
+                "t": "false"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 1760,
+        "y": 400,
+        "wires": [
+            [
+                "c0f1000000000016"
+            ],
+            [
+                "c0f100000000001c"
+            ]
+        ],
+        "outputLabels": [
+            "oui → suite",
+            "HS → OFF"
+        ]
+    },
+    {
+        "id": "c0f1000000000016",
+        "type": "switch",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "4. Besoin de confort ?",
+        "property": "needMode != 'none'",
+        "propertyType": "jsonata",
+        "rules": [
+            {
+                "t": "true"
+            },
+            {
+                "t": "false"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 1760,
+        "y": 480,
+        "wires": [
+            [
+                "c0f1000000000017"
+            ],
+            [
+                "c0f100000000001d"
+            ]
+        ],
+        "outputLabels": [
+            "oui → suite",
+            "non → OFF"
+        ]
+    },
+    {
+        "id": "c0f1000000000017",
+        "type": "switch",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "5. Surplus libre après eau chaude ?",
+        "property": "surplusOk",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "true"
+            },
+            {
+                "t": "false"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 1760,
+        "y": 560,
+        "wires": [
+            [
+                "c0f1000000000018"
+            ],
+            [
+                "c0f1000000000019"
+            ]
+        ],
+        "outputLabels": [
+            "oui → démarrage",
+            "non → arrêt"
+        ]
+    },
+    {
+        "id": "c0f1000000000018",
+        "type": "switch",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "6. Démarrage autorisé ?",
+        "property": "climOn = false and canStart = true",
+        "propertyType": "jsonata",
+        "rules": [
+            {
+                "t": "true"
+            },
+            {
+                "t": "false"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 1760,
+        "y": 640,
+        "wires": [
+            [
+                "c0f100000000001f"
+            ],
+            [
+                "c0f1000000000020"
+            ]
+        ],
+        "outputLabels": [
+            "oui → ON",
+            "non → maintien"
+        ]
+    },
+    {
+        "id": "c0f1000000000019",
+        "type": "switch",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "6. Arrêt autorisé ?",
+        "property": "climOn = true and (canStop = true or hardStop = true)",
+        "propertyType": "jsonata",
+        "rules": [
+            {
+                "t": "true"
+            },
+            {
+                "t": "false"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 1760,
+        "y": 720,
+        "wires": [
+            [
+                "c0f100000000001e"
+            ],
+            [
+                "c0f1000000000020"
+            ]
+        ],
+        "outputLabels": [
+            "oui → OFF",
+            "non → maintien"
+        ]
+    },
+    {
+        "id": "c0f100000000001a",
+        "type": "change",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "→ Maintien (désactivé)",
+        "rules": [
+            {
+                "t": "set",
+                "p": "desired",
+                "pt": "msg",
+                "to": "climOn ? \"on\" : \"off\"",
+                "tot": "jsonata"
+            },
+            {
+                "t": "set",
+                "p": "state",
+                "pt": "msg",
+                "to": "Désactivé",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "reason",
+                "pt": "msg",
+                "to": "Automatisation désactivée, aucune commande envoyée",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 2060,
+        "y": 240,
+        "wires": [
+            [
+                "c0f1000000000021"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000001b",
+        "type": "change",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "→ Maintien (pilotage manuel)",
+        "rules": [
+            {
+                "t": "set",
+                "p": "desired",
+                "pt": "msg",
+                "to": "climOn ? \"on\" : \"off\"",
+                "tot": "jsonata"
+            },
+            {
+                "t": "set",
+                "p": "state",
+                "pt": "msg",
+                "to": "manualLabel",
+                "tot": "msg"
+            },
+            {
+                "t": "set",
+                "p": "reason",
+                "pt": "msg",
+                "to": "manualReason",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 2060,
+        "y": 320,
+        "wires": [
+            [
+                "c0f1000000000021"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000001c",
+        "type": "change",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "→ OFF (sonde HS)",
+        "rules": [
+            {
+                "t": "set",
+                "p": "degradedSonde",
+                "pt": "msg",
+                "to": "true",
+                "tot": "bool"
+            },
+            {
+                "t": "set",
+                "p": "desired",
+                "pt": "msg",
+                "to": "off",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "state",
+                "pt": "msg",
+                "to": "Sonde intérieure HS",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "reason",
+                "pt": "msg",
+                "to": "Température intérieure illisible, aucun pilotage à l'aveugle",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 2060,
+        "y": 400,
+        "wires": [
+            [
+                "c0f1000000000021"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000001d",
+        "type": "change",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "→ OFF (confort atteint)",
+        "rules": [
+            {
+                "t": "set",
+                "p": "desired",
+                "pt": "msg",
+                "to": "off",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "state",
+                "pt": "msg",
+                "to": "seasonMode = \"arret\" ? \"Mode saison arrêté\" : (canCool = false and canHeat = false ? \"Hors saison\" : \"Confort atteint\")",
+                "tot": "jsonata"
+            },
+            {
+                "t": "set",
+                "p": "reason",
+                "pt": "msg",
+                "to": "needReason",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 2060,
+        "y": 480,
+        "wires": [
+            [
+                "c0f1000000000021"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000001e",
+        "type": "change",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "→ OFF (surplus insuffisant)",
+        "rules": [
+            {
+                "t": "set",
+                "p": "desired",
+                "pt": "msg",
+                "to": "off",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "state",
+                "pt": "msg",
+                "to": "preemptedByHotWater ? \"Veille (eau chaude prioritaire)\" : \"Veille (surplus insuffisant)\"",
+                "tot": "jsonata"
+            },
+            {
+                "t": "set",
+                "p": "reason",
+                "pt": "msg",
+                "to": "preemptedByHotWater ? \"Surplus de \" & $string(potentialSurplus) & \" W réservé au cumulus : \" & cumulusReserveReason : \"Surplus disponible \" & $string(availableW) & \" W sous le seuil d'arrêt \" & $string(stopTrigger) & \" W\"",
+                "tot": "jsonata"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 2060,
+        "y": 720,
+        "wires": [
+            [
+                "c0f1000000000021"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000001f",
+        "type": "change",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "→ ON (surplus gratuit)",
+        "rules": [
+            {
+                "t": "set",
+                "p": "desired",
+                "pt": "msg",
+                "to": "on",
+                "tot": "str"
+            },
+            {
+                "t": "set",
+                "p": "state",
+                "pt": "msg",
+                "to": "needMode = \"cool\" ? \"Rafraîchissement gratuit\" : \"Chauffage gratuit\"",
+                "tot": "jsonata"
+            },
+            {
+                "t": "set",
+                "p": "reason",
+                "pt": "msg",
+                "to": "\"Surplus libre \" & $string(availableW) & \" W après eau chaude, \" & (needMode = \"cool\" ? \"refroidissement\" : \"chauffage\") & \" jusqu'à \" & $string(storeTarget) & \"°C\"",
+                "tot": "jsonata"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 2060,
+        "y": 640,
+        "wires": [
+            [
+                "c0f1000000000021"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000020",
+        "type": "function",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000003",
+        "name": "→ Maintien (temporisations)",
+        "func": "// === Maintien : état conservé, aucune commande de changement ===\n// Quatre cas, tous légitimes : cycle en cours qui se poursuit, arrêt différé\n// par la protection compresseur, démarrage différé pour la même raison,\n// attente d'un surplus suffisant.\n\nmsg.desired = msg.climOn ? 'on' : 'off';\n\nif (msg.climOn) {\n    if (!msg.surplusOk) {\n        msg.state = 'Arrêt différé (anti court-cycle)';\n        msg.reason = (msg.preemptedByHotWater\n            ? 'Surplus repris par l\\'eau chaude (' + msg.cumulusReserveW + ' W réservés)'\n            : 'Surplus insuffisant')\n            + ', arrêt possible dans ' + msg.minRunLeftMin + ' min (protection compresseur)';\n    } else {\n        msg.state = msg.needMode === 'cool' ? 'Rafraîchissement gratuit' : 'Chauffage gratuit';\n        msg.reason = 'Surplus solaire ' + msg.availableW + ' W disponible après eau chaude'\n            + (msg.climIdle ? ', compresseur au repos (consigne atteinte)' : '');\n    }\n} else if (msg.surplusOk) {\n    msg.state = 'Démarrage différé (anti court-cycle)';\n    msg.reason = 'Surplus disponible, redémarrage possible dans '\n        + msg.minOffLeftMin + ' min (protection compresseur)';\n} else if (msg.preemptedByHotWater) {\n    msg.state = 'Veille (eau chaude prioritaire)';\n    msg.reason = 'Surplus de ' + msg.potentialSurplus + ' W réservé au cumulus ('\n        + msg.cumulusReserveReason + ')';\n} else {\n    msg.state = 'Veille (surplus insuffisant)';\n    msg.reason = 'Surplus disponible ' + msg.availableW + ' W, seuil de démarrage '\n        + msg.surplusTrig + ' W';\n}\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2070,
+        "y": 880,
+        "wires": [
+            [
+                "c0f1000000000021"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000021",
+        "type": "function",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "Calc action & historique",
+        "func": "// === Détermine l'action, tient l'historique ===\n// action = 'start' (mode + consigne) / 'adjust' (réalignement) / 'stop' / 'none'\n// Règle de sécurité : une clim allumée à la main n'est jamais coupée par le\n// flow (climOwned = false → arrêt non commandé, simple affichage).\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst now = Date.now();\nconst SETPOINT_TOL = 0.2;\n\nmsg.action = 'none';\nmsg.targetHvac = msg.needMode === 'cool' ? 'cool' : msg.needMode === 'heat' ? 'heat' : 'off';\n\n// Toutes les unités n'exposent pas 'cool'/'heat' (certaines n'ont que\n// 'heat_cool' ou 'auto'). Commande envoyée seulement si le mode existe, sinon\n// elle échouerait en boucle. Liste vide (entité injoignable) : pas de blocage.\nconst modes = Array.isArray(msg.hvacModes) ? msg.hvacModes : [];\nmsg.modeSupported = msg.targetHvac === 'off' || modes.length === 0\n    || modes.indexOf(msg.targetHvac) !== -1;\n\n// Entité injoignable : aucune commande, elle échouerait et fausserait\n// l'historique (grace period et détection manuelle dérivent ensuite).\nif (!msg.climAvailable) {\n    msg.reason = (msg.reason || '') + ' · clim injoignable, aucune commande';\n} else if (msg.desired === 'on' && !msg.climOn) {\n    if (!msg.modeSupported) {\n        msg.state = 'Mode non supporté';\n        msg.reason = msg.climEntity + ' n\\'expose pas le mode ' + msg.targetHvac\n            + ' (modes disponibles : ' + modes.join(', ') + ')';\n    } else {\n        msg.action = 'start';\n        setF('lastOnAt', now);\n        setF('lastActionAt', now);\n        setF('lastAction', 'on');\n        setF('lastActionReason', msg.reason);\n        setF('expectedHvac', msg.targetHvac);\n        setF('climOwned', true);\n        msg.climOwned = true;\n    }\n} else if (msg.desired === 'off' && msg.climOn) {\n    if (msg.climOwned) {\n        msg.action = 'stop';\n        setF('lastOffAt', now);\n        setF('lastActionAt', now);\n        setF('lastAction', 'off');\n        setF('lastActionReason', msg.reason);\n        setF('expectedHvac', 'off');\n        setF('climOwned', false);\n        msg.climOwned = false;\n    } else {\n        msg.state = 'Pilotage manuel';\n        msg.reason = 'Climatisation allumée hors automatisation, arrêt non commandé';\n    }\n} else if (msg.desired === 'on' && msg.climOn && msg.climOwned\n    && msg.targetHvac !== 'off' && msg.modeSupported) {\n    // Cycle en cours : réalignement si le mode ou la consigne a dérivé\n    // (bascule froid/chaud, cible modifiée par l'utilisateur).\n    const modeDrift = msg.hvacMode !== msg.targetHvac;\n    const spDrift = msg.storeTarget != null\n        && (msg.climSetpoint == null || Math.abs(msg.climSetpoint - msg.storeTarget) > SETPOINT_TOL);\n    if (modeDrift || spDrift) {\n        msg.action = 'adjust';\n        setF('lastActionAt', now);\n        setF('expectedHvac', msg.targetHvac);\n        msg.reason = msg.reason + ' · réalignement '\n            + (modeDrift ? 'mode ' + msg.targetHvac : 'consigne ' + msg.storeTarget + '°C');\n    }\n}\n\nmsg.lastAction = getF('lastAction');\nmsg.lastActionAt = getF('lastActionAt');\nmsg.lastActionReason = getF('lastActionReason');\nmsg.now = now;\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2400,
+        "y": 480,
+        "wires": [
+            [
+                "c0f1000000000022",
+                "c0f1000000000028",
+                "c0f100000000002a"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000022",
+        "type": "switch",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "Action à prendre ?",
+        "property": "action",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "neq",
+                "v": "none",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 1,
+        "x": 2640,
+        "y": 340,
+        "wires": [
+            [
+                "c0f1000000000023"
+            ]
+        ],
+        "outputLabels": [
+            "oui"
+        ]
+    },
+    {
+        "id": "c0f1000000000023",
+        "type": "switch",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "Démarrage / arrêt",
+        "property": "action",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "start",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "adjust",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "stop",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 3,
+        "x": 2820,
+        "y": 340,
+        "wires": [
+            [
+                "c0f1000000000024",
+                "c0f1000000000027"
+            ],
+            [
+                "c0f1000000000024",
+                "c0f1000000000027"
+            ],
+            [
+                "c0f1000000000026",
+                "c0f1000000000027"
+            ]
+        ],
+        "outputLabels": [
+            "start",
+            "adjust",
+            "stop"
+        ]
+    },
+    {
+        "id": "c0f1000000000024",
+        "type": "api-call-service",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "climate.set_hvac_mode",
+        "server": "1a7a75b5.c29f2a",
+        "version": 7,
+        "debugenabled": false,
+        "action": "climate.set_hvac_mode",
+        "floorId": [],
+        "areaId": [],
+        "deviceId": [],
+        "entityId": [
+            "climate.clim"
+        ],
+        "labelId": [],
+        "data": "{\"hvac_mode\": targetHvac}",
+        "dataType": "jsonata",
+        "mergeContext": "",
+        "mustacheAltTags": false,
+        "outputProperties": [],
+        "queue": "none",
+        "blockInputOverrides": false,
+        "domain": "climate",
+        "service": "set_hvac_mode",
+        "x": 3040,
+        "y": 300,
+        "wires": [
+            [
+                "c0f1000000000025"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000025",
+        "type": "api-call-service",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "climate.set_temperature",
+        "server": "1a7a75b5.c29f2a",
+        "version": 7,
+        "debugenabled": false,
+        "action": "climate.set_temperature",
+        "floorId": [],
+        "areaId": [],
+        "deviceId": [],
+        "entityId": [
+            "climate.clim"
+        ],
+        "labelId": [],
+        "data": "{\"temperature\": storeTarget}",
+        "dataType": "jsonata",
+        "mergeContext": "",
+        "mustacheAltTags": false,
+        "outputProperties": [],
+        "queue": "none",
+        "blockInputOverrides": false,
+        "domain": "climate",
+        "service": "set_temperature",
+        "x": 3040,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c0f1000000000026",
+        "type": "api-call-service",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "climate.turn_off",
+        "server": "1a7a75b5.c29f2a",
+        "version": 7,
+        "debugenabled": false,
+        "action": "climate.turn_off",
+        "floorId": [],
+        "areaId": [],
+        "deviceId": [],
+        "entityId": [
+            "climate.clim"
+        ],
+        "labelId": [],
+        "data": "",
+        "dataType": "jsonata",
+        "mergeContext": "",
+        "mustacheAltTags": false,
+        "outputProperties": [],
+        "queue": "none",
+        "blockInputOverrides": false,
+        "domain": "climate",
+        "service": "turn_off",
+        "x": 3040,
+        "y": 420,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c0f1000000000027",
+        "type": "debug",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "Log action",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": true,
+        "complete": "reason",
+        "targetType": "msg",
+        "statusVal": "reason",
+        "statusType": "msg",
+        "x": 3040,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "c0f1000000000028",
+        "type": "function",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "Build sensor payload",
+        "func": "// === Assemble le payload pour sensor.clim_automation ===\n\nconst attrs = {\n    reason: msg.reason,\n    action: msg.action,\n    desired: msg.desired,\n    clim_entity: msg.climEntity,\n    hvac_mode: msg.hvacMode,\n    hvac_action: msg.hvacAction,\n    target_hvac: msg.targetHvac,\n    hvac_modes: msg.hvacModes,\n    mode_supported: msg.modeSupported !== false,\n    clim_available: msg.climAvailable === true,\n    clim_owned: msg.climOwned === true,\n    manual_control: msg.manualControl === true,\n    manual_hold_active: msg.manualHoldActive === true,\n    enabled: msg.enabled === true,\n\n    // --- Confort ---\n    season_mode: msg.seasonMode,\n    need_mode: msg.needMode,\n    need_reason: msg.needReason,\n    indoor_temp: msg.indoorTemp,\n    indoor_available: msg.indoorAvailable === true,\n    outdoor_temp: msg.outdoorTemp,\n    outdoor_available: msg.outdoorAvailable === true,\n    target_cool: msg.targetCool,\n    target_heat: msg.targetHeat,\n    comfort_target: msg.comfortTarget,\n    store_target: msg.storeTarget,\n    store_band: msg.storeBand,\n    cool_floor: msg.coolFloor,\n    heat_ceiling: msg.heatCeiling,\n    outdoor_cool_min: msg.outdoorCoolMin,\n    outdoor_heat_max: msg.outdoorHeatMax,\n    can_cool: msg.canCool === true,\n    can_heat: msg.canHeat === true,\n    clim_setpoint: msg.climSetpoint,\n\n    // --- Bilan électrique ---\n    solar_power: msg.solar,\n    grid_power: msg.gridPower,\n    surplus: msg.surplus,\n    clim_power: msg.climPower,\n    clim_draw: msg.climDraw,\n    clim_idle: msg.climIdle === true,\n    potential_surplus: msg.potentialSurplus,\n    clim_load_w: msg.climLoadW,\n    clim_kwh_today: msg.climKwhToday,\n\n    // --- Priorité eau chaude ---\n    cumulus_sensor: msg.cumulusSensor,\n    cumulus_found: msg.cumulusFound === true,\n    cumulus_reserve_w: msg.cumulusReserveW,\n    cumulus_reserve_reason: msg.cumulusReserveReason,\n    cumulus_load_w: msg.cumulusLoadW,\n    hot_water_priority: msg.hotWaterPriority === true,\n    preempted_by_hot_water: msg.preemptedByHotWater === true,\n    available_w: msg.availableW,\n\n    // --- Hystérésis et protection compresseur ---\n    surplus_trigger: msg.surplusTrig,\n    stop_trigger: msg.stopTrigger,\n    surplus_ok: msg.surplusOk === true,\n    surplus_high: msg.surplusHigh === true,\n    surplus_low: msg.surplusLow === true,\n    hard_stop: msg.hardStop === true,\n    can_start: msg.canStart === true,\n    can_stop: msg.canStop === true,\n    min_run_left_min: msg.minRunLeftMin || 0,\n    min_off_left_min: msg.minOffLeftMin || 0,\n\n    degraded_sonde: msg.degradedSonde === true,\n    sonde_down_hours: msg.sondeDownHours || 0,\n\n    last_update: new Date(msg.now || Date.now()).toISOString(),\n    friendly_name: 'Clim Automation'\n};\n\nif (msg.lastAction) attrs.last_action = msg.lastAction;\nif (msg.lastActionAt) attrs.last_action_at = new Date(msg.lastActionAt).toISOString();\nif (msg.lastActionReason) attrs.last_action_reason = msg.lastActionReason;\nif (msg.manualHoldUntil) attrs.manual_hold_until = new Date(msg.manualHoldUntil).toISOString();\n\nlet stateStr = msg.state || msg.reason || 'Inconnu';\nif (msg.degradedSonde) stateStr = 'Sonde HS · ' + stateStr;\n\nmsg.payload = {\n    state: stateStr,\n    attributes: attrs\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2640,
+        "y": 560,
+        "wires": [
+            [
+                "c0f1000000000029"
+            ]
+        ]
+    },
+    {
+        "id": "c0f1000000000029",
+        "type": "ha-sensor",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "sensor.clim_automation",
+        "entityConfig": "ha_sensor_clim",
+        "version": 0,
+        "state": "payload.state",
+        "stateType": "msg",
+        "attributes": [
+            {
+                "property": "attributes",
+                "value": "payload.attributes",
+                "valueType": "msg"
+            }
+        ],
+        "inputOverride": "allow",
+        "outputProperties": [],
+        "x": 2920,
+        "y": 560,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c0f100000000002a",
+        "type": "function",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "Alertes ?",
+        "func": "// === Alertes HA (persistent_notification) ===\n// Une notification par épisode, anti-spam par contexte persistant.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst out = [];\nconst now = Date.now();\nconst DAY_MS = 24 * 3600 * 1000;\n\n// 1. Sonde intérieure HS depuis ≥ 2 h\nif ((msg.sondeDownHours || 0) >= 2) {\n    if (!getF('notifSondeDown')) {\n        setF('notifSondeDown', true);\n        out.push({ payload: {\n            notification_id: 'clim_sonde_hs',\n            title: 'Clim : sonde intérieure HS',\n            message: 'Sonde indisponible depuis ' + msg.sondeDownHours\n                + ' h. Climatisation gratuite suspendue (pilotage à l\\'aveugle exclu).'\n        }});\n    }\n} else if (msg.indoorAvailable) {\n    setF('notifSondeDown', false);\n}\n\n// 2. Sensor cumulus introuvable : la priorité eau chaude tourne en aveugle,\n//    avec réservation permanente du surplus (clim quasi jamais autorisée).\nif (msg.cumulusFound === false) {\n    const last = getF('notifNoCumulusAt') || 0;\n    if (now - last > DAY_MS) {\n        setF('notifNoCumulusAt', now);\n        out.push({ payload: {\n            notification_id: 'clim_cumulus_absent',\n            title: 'Clim : sensor cumulus introuvable',\n            message: msg.cumulusSensor + ' absent. Surplus réservé en permanence à l\\'eau '\n                + 'chaude par sécurité, confort gratuit désactivé. Variable '\n                + 'CUMULUS_SENSOR à vérifier.'\n        }});\n    }\n}\n\n// 3. Entité climatisation injoignable depuis ≥ 1 h\nif (msg.climAvailable === false) {\n    let since = getF('climDownSince');\n    if (!since) { since = now; setF('climDownSince', now); }\n    if (now - since > 3600 * 1000 && !getF('notifClimDown')) {\n        setF('notifClimDown', true);\n        out.push({ payload: {\n            notification_id: 'clim_injoignable',\n            title: 'Clim : entité injoignable',\n            message: msg.climEntity + ' indisponible depuis plus d\\'une heure, '\n                + 'aucune commande envoyée.'\n        }});\n    }\n} else {\n    setF('climDownSince', null);\n    setF('notifClimDown', false);\n}\n\nif (out.length === 0) return null;\nreturn [out];",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2630,
+        "y": 640,
+        "wires": [
+            [
+                "c0f100000000002b"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000002b",
+        "type": "api-call-service",
+        "z": "c0f10000000000ab",
+        "g": "c0f1000000000004",
+        "name": "Notification HA",
+        "server": "1a7a75b5.c29f2a",
+        "version": 7,
+        "debugenabled": false,
+        "action": "persistent_notification.create",
+        "floorId": [],
+        "areaId": [],
+        "deviceId": [],
+        "entityId": [],
+        "labelId": [],
+        "data": "{\"title\": payload.title, \"message\": payload.message, \"notification_id\": payload.notification_id}",
+        "dataType": "jsonata",
+        "mergeContext": "",
+        "mustacheAltTags": false,
+        "outputProperties": [],
+        "queue": "none",
+        "blockInputOverrides": false,
+        "domain": "persistent_notification",
+        "service": "create",
+        "x": 3040,
+        "y": 640,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c0f100000000002c",
+        "type": "catch",
+        "z": "c0f10000000000ab",
+        "name": "Erreurs du flow",
+        "scope": null,
+        "uncaught": false,
+        "x": 2400,
+        "y": 700,
+        "wires": [
+            [
+                "c0f100000000002d"
+            ]
+        ]
+    },
+    {
+        "id": "c0f100000000002d",
+        "type": "function",
+        "z": "c0f10000000000ab",
+        "name": "Gestion erreur",
+        "func": "// === Gestion des erreurs du flow (nœud catch) ===\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst src = (msg.error && msg.error.source) || {};\nconst SERVICE_NODES = [\"c0f1000000000024\", \"c0f1000000000025\", \"c0f1000000000026\"]; // set_hvac_mode / set_temperature / turn_off\n\n// Commande clim échouée : l'historique optimiste est faux → purge, sinon la\n// grace period de démarrage, l'anti court-cycle et la détection de pilotage\n// manuel dérivent tous les trois.\nif (SERVICE_NODES.indexOf(src.id) !== -1) {\n    setF('lastAction', null);\n    setF('lastActionAt', 0);\n    setF('expectedHvac', null);\n    setF('climOwned', false);\n}\n\n// Anti-spam : 1 notification max / 15 min\nconst now = Date.now();\nconst last = getF('lastErrorNotifAt') || 0;\nif (now - last < 15 * 60 * 1000) return null;\nsetF('lastErrorNotifAt', now);\n\nmsg.payload = {\n    notification_id: 'clim_flow_error',\n    title: 'Clim : erreur dans le flow',\n    message: (src.name || src.id || '?') + ' : '\n        + (msg.error && msg.error.message ? msg.error.message : 'erreur inconnue')\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2630,
+        "y": 700,
+        "wires": [
+            [
+                "c0f100000000002b"
+            ]
+        ]
+    },
+    {
+        "id": "1a7a75b5.c29f2a",
+        "type": "server",
+        "name": "Home Assistant",
+        "addon": true,
+        "rejectUnauthorizedCerts": true,
+        "ha_boolean": [],
+        "connectionDelay": false,
+        "cacheJson": false,
+        "heartbeat": false,
+        "heartbeatInterval": "",
+        "statusSeparator": "",
+        "enableGlobalContextStore": false
+    },
+    {
+        "id": "ha_sensor_clim",
+        "type": "ha-entity-config",
+        "server": "1a7a75b5.c29f2a",
+        "deviceConfig": "",
+        "name": "sensor config for sensor.clim_automation",
+        "version": 6,
+        "entityType": "sensor",
+        "haConfig": [
+            {
+                "property": "name",
+                "value": "Clim Automation"
+            },
+            {
+                "property": "icon",
+                "value": "mdi:air-conditioner"
+            },
+            {
+                "property": "entity_picture",
+                "value": ""
+            },
+            {
+                "property": "entity_category",
+                "value": ""
+            },
+            {
+                "property": "device_class",
+                "value": ""
+            },
+            {
+                "property": "unit_of_measurement",
+                "value": ""
+            },
+            {
+                "property": "state_class",
+                "value": ""
+            }
+        ],
+        "resend": true,
+        "debugEnabled": false
+    }
+]

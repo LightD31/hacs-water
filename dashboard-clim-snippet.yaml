@@ -1,0 +1,105 @@
+# =============================================================
+# Climatisation Solaire (flows-clim.json) — cartes d'exemple
+# Cartes Home Assistant natives, aucune ressource Lovelace requise.
+# =============================================================
+
+# --- Vue d'ensemble : état, priorité eau chaude, budget surplus ---
+- type: markdown
+  content: >-
+    {% set s = states.sensor.clim_automation %}
+    {% if s is none %}
+    **sensor.clim_automation** absent, flow Node-RED à déployer.
+    {% else %}
+    ## {{ s.state }}
+
+    {{ s.attributes.reason }}
+
+    | | |
+    |---|---|
+    | Intérieur | {{ s.attributes.indoor_temp }} °C
+      {%- if s.attributes.store_target %} → {{ s.attributes.store_target }} °C{% endif %} |
+    | Extérieur | {{ s.attributes.outdoor_temp | default('n/a') }} °C |
+    | Surplus potentiel | {{ s.attributes.potential_surplus }} W |
+    | Réservé eau chaude | {{ s.attributes.cumulus_reserve_w }} W |
+    | **Disponible clim** | **{{ s.attributes.available_w }} W**
+      (seuil {{ s.attributes.surplus_trigger }} W) |
+    | Conso clim | {{ s.attributes.clim_draw }} W
+      · {{ s.attributes.clim_kwh_today }} kWh aujourd'hui |
+
+    {% if s.attributes.preempted_by_hot_water %}
+    ⚠️ Surplus suffisant mais **réservé à l'eau chaude** :
+    {{ s.attributes.cumulus_reserve_reason }}
+    {% elif s.attributes.min_run_left_min > 0 %}
+    ⏳ Arrêt possible dans {{ s.attributes.min_run_left_min }} min
+    (protection compresseur).
+    {% elif s.attributes.min_off_left_min > 0 %}
+    ⏳ Redémarrage possible dans {{ s.attributes.min_off_left_min }} min
+    (protection compresseur).
+    {% elif s.attributes.manual_control %}
+    ✋ Clim allumée hors automatisation, laissée telle quelle.
+    {% endif %}
+    {% endif %}
+
+
+# --- Réglages ---
+- type: entities
+  title: Réglages climatisation gratuite
+  entities:
+    - entity: input_boolean.clim_automation_enabled
+      name: Automatisation
+    - entity: input_select.clim_season_mode
+      name: Mode saison
+    - entity: input_number.clim_target_cool
+      name: Cible rafraîchissement
+    - entity: input_number.clim_target_heat
+      name: Cible chauffage
+    - entity: input_number.clim_surplus_trigger
+      name: Seuil de surplus
+    - type: divider
+    - entity: climate.clim
+      name: Climatisation
+
+
+# --- Diagnostic : décision détaillée ---
+- type: entities
+  title: Diagnostic
+  entities:
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: need_mode
+      name: Sens demandé
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: cumulus_reserve_reason
+      name: Priorité eau chaude
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: available_w
+      name: Surplus disponible
+      suffix: " W"
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: stop_trigger
+      name: Seuil d'arrêt
+      suffix: " W"
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: clim_owned
+      name: Pilotée par le flow
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: last_action_reason
+      name: Dernière action
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: last_update
+      name: Mise à jour
+
+
+# --- Chip compacte pour un header ---
+- type: markdown
+  content: >-
+    {% set a = state_attr('sensor.clim_automation', 'available_w') %}
+    {% set r = state_attr('sensor.clim_automation', 'cumulus_reserve_w') %}
+    ❄️ {{ states('sensor.clim_automation') }} · {{ a }} W libres
+    {%- if r and r > 0 %} · {{ r }} W à l'eau chaude{% endif %}
