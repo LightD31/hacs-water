@@ -1114,20 +1114,6 @@
         ]
     },
     {
-        "id": "1a7a75b5.c29f2a",
-        "type": "server",
-        "name": "Home Assistant",
-        "addon": true,
-        "rejectUnauthorizedCerts": true,
-        "ha_boolean": [],
-        "connectionDelay": false,
-        "cacheJson": false,
-        "heartbeat": false,
-        "heartbeatInterval": "",
-        "statusSeparator": "",
-        "enableGlobalContextStore": false
-    },
-    {
         "id": "ha_sensor_clim",
         "type": "ha-entity-config",
         "server": "1a7a75b5.c29f2a",

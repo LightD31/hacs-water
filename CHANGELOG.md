@@ -2,6 +2,20 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.14.1] - 2026-07-27
+
+- **Correctif : erreur de validation sur `sensor.clim_automation` à l'import.**
+  `flows-clim.json` redéfinissait le nœud serveur Home Assistant avec le même
+  identifiant que `flows.json` (`1a7a75b5.c29f2a`). À l'import dans une instance
+  où le flow cumulus est déjà déployé, la collision faisait basculer Node-RED en
+  copie : renumérotation de tout le flow et création d'un **second nœud serveur
+  dépourvu de jeton d'accès**, rendant invalides tous les nœuds le référençant,
+  `sensor.clim_automation` compris. Le nœud serveur n'est plus redéfini, il est
+  seulement référencé : plus aucun identifiant en collision, l'import se
+  raccroche au serveur déjà configuré.
+- **README** : section « Import dans Node-RED », prérequis et symptôme décrits.
+- Fichiers modifiés : `flows-clim.json`, `README.md`, `CHANGELOG.md`.
+
 ## [v1.14.0] - 2026-07-27
 
 - **Disjoncteurs intelligents exploités : mesure réelle au lieu d'estimation.**
