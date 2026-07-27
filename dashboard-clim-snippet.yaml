@@ -1,6 +1,27 @@
 # =============================================================
-# Climatisation Solaire (flows-clim.json) — cartes d'exemple
-# Cartes Home Assistant natives, aucune ressource Lovelace requise.
+# Climatisation Solaire — cartes d'exemple
+# =============================================================
+
+# --- Carte dédiée (clim-solaire-card.js) ---
+- type: custom:clim-solaire-card
+  entity: sensor.clim_automation
+
+# --- Sans la liste des pièces, réglages toujours ouverts ---
+- type: custom:clim-solaire-card
+  entity: sensor.clim_automation
+  show_units: false
+  show_settings: expanded
+
+# --- Helpers personnalisés, ou lignes masquées ---
+- type: custom:clim-solaire-card
+  entity: sensor.clim_automation
+  controls:
+    surplus_trigger: false          # masque le slider
+    target_cool: input_number.mon_helper
+
+# =============================================================
+# Les cartes ci-dessous couvrent le même besoin en cartes Home
+# Assistant natives, sans ressource Lovelace supplémentaire.
 # =============================================================
 
 # --- Vue d'ensemble : budget de surplus et priorité eau chaude ---
