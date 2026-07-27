@@ -2,6 +2,33 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.15.0] - 2026-07-27
+
+- **Nouvelle carte `clim-solaire-card.js`** pour `sensor.clim_automation`, dans
+  l'esprit de la carte cumulus : hero à priorités, chemin de décision repliable,
+  pastilles, panneau de réglages avec envoi différé, éditeur visuel.
+- **Barre de budget de surplus** : empilement eau chaude / clim / libre dont la
+  somme vaut le surplus potentiel, avec les **paliers d'unités marqués** dessus
+  (ceux atteints en blanc franc). Le nombre d'unités en marche s'explique
+  visuellement, sans lire un attribut.
+- **Liste des pièces par priorité** : groupe de disjoncteur, température et
+  cible de stockage, sens demandé, badge d'état (marche, veille, manuel, pause,
+  disjoncteur, temporisation restante), accès à la fiche de l'unité.
+- **Aide à la calibration** : la pastille de consommation observée par unité
+  passe en orange dès qu'elle s'écarte de plus de 25 % de `CLIM_LOAD_W`, et la
+  consommation mesurée signale la part consommée hors automatisation.
+- **Avertissements non intrusifs** : un disjoncteur hors tension apparaît en
+  rouge dans la légende sans détourner le hero quand l'autre groupe rafraîchit
+  normalement.
+- **Vérification** : la carte a été rendue dans un navigateur (Chromium) sur les
+  sept états produits par la simulation du flow — deux unités en marche, eau
+  chaude prioritaire, veille, désactivée, hors saison, disjoncteur coupé, pièce
+  en manuel — sans erreur JavaScript, ni `undefined` ni `NaN` dans le rendu.
+- **README** : documentation de la carte et de ses options. Note sur la
+  ressource Lovelace, le dépôt hébergeant désormais deux cartes.
+- Fichiers ajoutés : `clim-solaire-card.js`. Fichiers modifiés :
+  `dashboard-clim-snippet.yaml`, `README.md`, `CHANGELOG.md`.
+
 ## [v1.14.2] - 2026-07-27
 
 - **Correctif : « validation error » permanent sur `sensor.clim_automation`.**

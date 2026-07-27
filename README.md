@@ -85,6 +85,66 @@ sur le seul surplus solaire, **eau chaude prioritaire**. Import séparé de
 `flows-clim.json` (onglet « Climatisation Solaire »), sans aucune modification
 de `flows.json`.
 
+### Carte Lovelace dédiée
+
+`clim-solaire-card.js`, pensée pour `sensor.clim_automation` comme la carte
+cumulus l'est pour son propre sensor.
+
+- **Hero** : état et raison, icône et couleur par priorité — désactivée →
+  import réseau → surplus réservé à l'eau chaude → rafraîchissement / chauffage
+  / confort gratuit → temporisation → disjoncteur coupé → pilotage manuel →
+  sondes muettes → hors saison → confort assuré → veille. Pulsation de l'icône
+  et shimmer de la barre d'accent pendant un cycle actif.
+- **Budget de surplus** : barre empilée **eau chaude / clim / libre**, la somme
+  valant le surplus potentiel. Les **paliers** y sont marqués en pointillés, un
+  par unité finançable, ceux atteints en blanc franc : la raison du nombre
+  d'unités en marche se lit d'un coup d'œil. Cerclée de rouge en cas d'import
+  réseau, avec la mention du disjoncteur hors tension le cas échéant.
+- **Pièces, par priorité** : numéro d'ordre, groupe de disjoncteur, température
+  et cible de stockage, sens demandé, et badge d'état (en marche, veille,
+  manuel, pause, disjoncteur, temporisation restante). Tap sur une ligne pour
+  la fiche de l'unité.
+- **Pastilles** : production, surplus potentiel, réservation eau chaude avec son
+  seuil, consommation mesurée aux disjoncteurs (part hors flow signalée),
+  consommation observée par unité **avec alerte de calibration** si elle
+  s'écarte de plus de 25 % de `CLIM_LOAD_W`, kWh du jour, extérieur.
+- **Chemin de décision** (bouton ℹ de la bande budget) : les 6 priorités du
+  flow, règles passées ✓, règle décisive →, règles court-circuitées grisées.
+- **Réglages** repliables : automatisation, mode saison, cibles froid et chaud
+  (avec leur cible de stockage en sous-titre), seuil par unité. Envoi différé de
+  250 ms sur les sliders.
+
+```yaml
+type: custom:clim-solaire-card
+entity: sensor.clim_automation
+```
+
+| Clé | Type | Défaut | Description |
+|---|---|---|---|
+| `entity` | string | **requis** | Sensor produit par le flow clim |
+| `show_units` | bool | `true` | Liste des pièces |
+| `show_settings` | string/bool | `'collapsible'` | `'collapsible'` · `'expanded'` · `false` |
+| `controls` | object | (voir ci-dessous) | Helpers pilotés, `false` masque une ligne |
+
+| Clé `controls` | Type | Helper par défaut |
+|---|---|---|
+| `enabled` | toggle | `input_boolean.clim_automation_enabled` |
+| `season` | select | `input_select.clim_season_mode` (optionnel) |
+| `target_cool` | slider | `input_number.clim_target_cool` |
+| `target_heat` | slider | `input_number.clim_target_heat` |
+| `surplus_trigger` | slider | `input_number.clim_surplus_trigger` (optionnel) |
+
+Éditeur visuel disponible, les helpers optionnels absents masquant simplement
+leur ligne. Exemples dans `dashboard-clim-snippet.yaml`.
+
+> **Ressource Lovelace** : ce dépôt contient désormais deux cartes. HACS
+> installe le dépôt dans `/config/www/community/hacs-water/` ; vérifier que
+> `clim-solaire-card.js` y figure et **ajouter sa ressource séparément**
+> (Paramètres → Tableaux de bord → ⋮ → Ressources), la déclaration `filename`
+> de `hacs.json` ne pouvant en désigner qu'une. À défaut, copie manuelle du
+> fichier dans `/config/www/` et ressource `/local/clim-solaire-card.js` de
+> type *JavaScript Module*.
+
 ### Import dans Node-RED
 
 **Prérequis : le flow « Cumulus Solaire V3 » (`flows.json`) doit être déployé.**
