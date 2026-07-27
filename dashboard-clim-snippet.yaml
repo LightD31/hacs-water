@@ -112,6 +112,8 @@
       name: Cible chauffage
     - entity: input_number.clim_surplus_trigger
       name: Seuil de surplus par unité
+    - entity: input_text.clim_priority_order
+      name: Ordre de priorité
     - type: divider
     - entity: climate.salon_room_temperature
       name: Salon
