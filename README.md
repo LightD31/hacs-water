@@ -80,93 +80,191 @@ temp_cumulus_solaire ≥ cible_effective (reach_for) + marge
 
 ## Climatisation et chauffage gratuits (`flows-clim.json`)
 
-Second flow Node-RED, **indépendant**, pour le pilotage d'une clim réversible
-(ou pompe à chaleur air/air) sur le seul surplus solaire, **eau chaude
-prioritaire**. Import séparé de `flows-clim.json` (onglet « Climatisation
-Solaire »), sans aucune modification de `flows.json`.
+Second flow Node-RED, **indépendant**, pour le pilotage des cinq unités Daikin
+sur le seul surplus solaire, **eau chaude prioritaire**. Import séparé de
+`flows-clim.json` (onglet « Climatisation Solaire »), sans aucune modification
+de `flows.json`.
 
-### Priorité à l'eau chaude
+### Priorité à l'eau chaude, jusqu'à 60 °C
 
 Aucun couplage direct entre les deux flows : lecture de
 `sensor.cumulus_automation` par le flow clim, qui en déduit la part du surplus
-à laisser au cumulus. Distinction essentielle, sous peine de compter deux fois
-la même énergie :
+à laisser au cumulus. L'eau chaude garde la priorité jusqu'à
+`HOT_WATER_PRIORITY_TEMP` (**60 °C** par défaut, température de référence
+anti-légionelle), et non jusqu'à la seule cible de confort `reach_for` : ballon
+pleinement chargé et compteur de jours sans 60 °C remis à zéro avant tout usage
+du surplus pour le confort. Seuil relevé automatiquement si `reach_for` le
+dépasse (62 °C pendant un cycle légionelle dû).
 
-| Situation du cumulus | Réservation | Raison |
-|---|---|---|
-| Déjà en chauffe (`cumulus_power ≥ 100 W`) | **0 W** | Consommation déjà déduite du surplus mesuré au compteur réseau |
-| Commandé ON, anti-injection ou anti-légionelle en attente | **`CUMULUS_LOAD_W`** | Démarrage imminent, surplus à ne pas préempter |
-| Eau sous la cible (`water_temp < reach_for`) | **`CUMULUS_LOAD_W`** | Besoin non couvert, l'eau chaude passe avant le confort |
-| Eau à la cible, ou cible couverte par le cumulus solaire amont | **0 W** | Surplus libéré pour le confort |
-| Thermostat mécanique ouvert (`thermostat_tripped`) | **0 W** | Aucune consommation possible, surplus inutilisable par le cumulus |
-| Automatisation cumulus désactivée, ou cumulus en pause manuelle | **0 W** | Pas de demande |
-| `sensor.cumulus_automation` introuvable ou température illisible | **`CUMULUS_LOAD_W`** | Réservation par sécurité, l'eau chaude ne perd jamais son surplus sur une lecture manquante |
-
-Le surplus laissé au confort est exposé en clair :
+| Situation du cumulus | Réservation |
+|---|---|
+| Déjà en chauffe (`cumulus_power ≥ 100 W`) | **0 W** — consommation déjà déduite du surplus mesuré au compteur |
+| Commandé ON, anti-injection, anti-légionelle en attente | **`CUMULUS_LOAD_W`** — démarrage imminent |
+| Eau sous `HOT_WATER_PRIORITY_TEMP` | **`CUMULUS_LOAD_W`** — priorité eau chaude |
+| Eau au-delà du seuil, ou cible couverte par le cumulus solaire amont | **0 W** — surplus libéré |
+| Thermostat mécanique ouvert (`thermostat_tripped`) | **0 W** — aucune consommation possible, surplus inutilisable |
+| Automatisation cumulus désactivée, ou cumulus en pause manuelle | **0 W** — pas de demande |
+| Sensor introuvable ou température illisible | **`CUMULUS_LOAD_W`** — réservation par sécurité |
 
 ```
-available_w = (surplus réseau + consommation propre de la clim) − réservation cumulus
+available_w = (surplus réseau + conso des unités pilotées) − réservation cumulus
 ```
 
-La priorité reste effective **en cours de cycle** : dès que le cumulus
-redemande de l'énergie, `available_w` passe en négatif et la clim s'arrête,
-au besoin en court-circuitant la temporisation anti court-cycle (`hard_stop`
-après 2 min d'import réseau franc).
+⚠️ **Ballon incapable d'atteindre 60 °C** : la réservation serait alors
+permanente et la clim ne tournerait jamais. Deux échappatoires, dans cet ordre :
+la ligne `thermostat_tripped` ci-dessus (le thermostat mécanique coupe le
+circuit, le surplus est rendu au confort), et le réglage de
+`HOT_WATER_PRIORITY_TEMP` sous le maximum réellement atteint par le ballon.
+Attribut `hot_water_priority_temp` du sensor pour vérifier le seuil appliqué.
 
-### Arbre de décision (priorité ↓)
+### Allocation par paliers, une unité à la fois
 
-1. **Automatisation active ?** (`input_boolean.clim_automation_enabled`), sinon maintien sans commande.
-2. **Pilotage manuel ?** Clim allumée hors automatisation, ou intervention manuelle détectée (pause de 45 min).
-3. **Sonde intérieure OK ?** Sinon arrêt, pas de pilotage à l'aveugle.
-4. **Besoin de confort ?** Écart à la cible et sens autorisé par la saison.
-5. **Surplus libre après eau chaude ?** Hystérésis de 5 min, seuil d'arrêt à 75 % du seuil de démarrage.
-6. **Démarrage / arrêt autorisé ?** Protection compresseur (20 min de marche minimum, 15 min d'arrêt minimum).
+Un palier = `CLIM_LOAD_W` (800 W) de surplus disponible. Les unités sont
+servies dans l'ordre de `CLIM_UNITS` (priorité décroissante) et délestées dans
+l'ordre inverse, **une seule** ajoutée ou retirée par palier confirmé
+(`CLIM_HYST_MIN`, 5 min) : montée progressive, sans à-coup sur les compresseurs.
 
-### Deux garde-fous de cohabitation
+| `available_w` | Unités en marche |
+|---|---|
+| ≤ 800 W | aucune |
+| 800 → 1 600 W | Salon |
+| 1 600 → 2 400 W | Salon + Cuisine |
+| 2 400 → 3 200 W | Salon + Cuisine + Chambre Tom |
 
-- **Propriété du pilotage** : une clim allumée à la main n'est **jamais** coupée
-  par le flow (`clim_owned = false`). Le confort demandé explicitement passe
-  avant l'économie.
-- **Pause manuelle** : tout changement d'état non commandé par le flow suspend
-  l'automatisation 45 min, comme dans le flow cumulus.
+(seuil de montée strict : `available_w > n × CLIM_LOAD_W` pour passer à
+*n* unités ; seuil de descente à `CLIM_STOP_RATIO` près, soit 75 %.)
 
-### Stockage de l'énergie gratuite
+Ordre par défaut : Salon → Cuisine → Chambre Tom → Chambre Didier →
+Chambre Marie. Plafond réglable par `CLIM_MAX_UNITS`.
 
-Même principe que le cumulus en batterie thermique : dépassement volontaire de
-la cible de confort (`CLIM_STORE_BAND`, défaut 1,5 °C) pour stocker le gratuit
-dans l'inertie du bâtiment, borné par `CLIM_COOL_FLOOR` / `CLIM_HEAT_CEILING`
-pour éviter l'inconfort inverse. Consigne envoyée à l'unité = cible de
+Le **délestage respecte strictement la priorité** : une unité plus prioritaire
+n'est jamais coupée parce qu'une moins prioritaire est encore retenue par son
+`min-run` (les unités ne démarrant pas ensemble, leurs temporisations
+n'expirent pas ensemble). Le délestage attend, `shed_deferred` le signale, et
+l'unité visée est nommée par `shed_blocked_by`.
+
+### Disjoncteurs intelligents : mesure réelle et alimentation
+
+Les cinq unités sont réparties sur deux disjoncteurs communicants, déclarés en
+JSON dans `CLIM_GROUPS` :
+
+| Groupe | Disjoncteur | Compteur | Pièces |
+|---|---|---|---|
+| Clim Nord | `switch.clim_avant` | `sensor.clim_avant_power` | Salon, Cuisine |
+| Clim Sud | `switch.clim_sud` | `sensor.clim_sud_power` | Chambre Tom, Chambre Didier, Chambre Marie |
+
+Deux apports par rapport à une simple estimation :
+
+- **Consommation récupérable mesurée.** « Récupérable » = ce que le flow rendrait
+  au réseau en éteignant ce qu'il a allumé. La mesure d'un groupe n'est
+  exploitable que si **toutes** ses unités en marche appartiennent au flow ;
+  sinon le compteur agrège du récupérable et du non-récupérable sans permettre
+  de les séparer, et l'estimation `CLIM_LOAD_W` reprend la main pour ce groupe.
+  Source indiquée par `clim_draw_source` (`mesure` / `estimation` / `mixte`).
+  La veille du disjoncteur (`CLIM_GROUP_STANDBY_W`, défaut 5 W) est retirée :
+  elle subsiste après extinction, elle n'est pas récupérable.
+- **État d'alimentation.** Disjoncteur ouvert → unités du groupe écartées avec la
+  cause exacte (« disjoncteur Clim Nord coupé ») au lieu d'un « injoignable »
+  générique, et notification si du surplus reste inexploité. L'autre groupe
+  continue normalement. Le flow **ne commande jamais les disjoncteurs** :
+  couper l'alimentation d'un compresseur en marche n'est pas une façon de
+  moduler une charge.
+
+`CLIM_GROUPS` vide ou invalide : repli complet sur l'estimation par unité,
+aucun disjoncteur supposé coupé.
+
+#### Calibrer `CLIM_LOAD_W`
+
+`CLIM_LOAD_W` est le **coût d'un palier**, c'est-à-dire la consommation prêtée à
+une unité *pas encore démarrée*. Les unités inverter modulant beaucoup (relevé :
+250 W pour une chambre en rafraîchissement proche de sa consigne, contre 800 W
+par défaut), la valeur juste s'observe :
+
+1. laisser tourner un cycle ;
+2. lire l'attribut `observed_draw_per_unit_w` du sensor (mesure des groupes,
+   veille déduite, divisée par le nombre d'unités en marche) ;
+3. reporter le **maximum observé** dans `CLIM_LOAD_W`.
+
+Trop haut, le flow est conservateur et laisse du surplus inexploité ; trop bas,
+il démarre une unité de trop, ce que le garde-fou import réseau corrige en
+2 min. Une fois les unités en marche, le budget s'appuie de toute façon sur la
+mesure et non sur cette estimation.
+
+### Garde-fou import réseau
+
+`available_w > 0` **ne signifie pas** qu'on n'importe rien : c'est le surplus
+qu'on aurait toutes unités du flow arrêtées. Avec 3 unités et 800 W
+disponibles, on tire 1 600 W du réseau. Le seul juge est donc le compteur :
+import réseau confirmé pendant 2 min → délestage d'une unité par minute,
+`min-run` ignoré, jusqu'à l'arrêt de l'import. C'est aussi ce qui rend la
+priorité eau chaude effective **en cours de cycle** : le cumulus qui redémarre
+fait basculer le compteur en import.
+
+### Priorité de la décision
+
+1. **Automatisation désactivée** → aucune commande.
+2. **Unité hors périmètre** (allumée à la main, pause 45 min, injoignable) → jamais touchée.
+3. **Besoin de confort disparu** → libération immédiate, sans attendre le surplus.
+4. **Eau chaude prioritaire** → réservation retirée du surplus.
+5. **Palier de surplus** → ±1 unité par palier confirmé.
+6. **Anti court-cycle par unité** → `CLIM_MIN_RUN_MIN` / `CLIM_MIN_OFF_MIN`.
+
+### Cohabitation avec l'usage manuel
+
+Les deux garde-fous s'appliquent **par unité**, pour que la chambre allumée à
+la main ne bloque pas le salon :
+
+- **Propriété du pilotage** : une unité allumée hors du flow n'est **jamais**
+  coupée par lui (`owned = false`), et sa consommation n'est pas comptée comme
+  récupérable dans le budget (elle ne sera pas rendue).
+- **Pause manuelle** : tout changement de mode non commandé par le flow suspend
+  l'automatisation 45 min **sur cette unité seulement**. Le surplus n'est pas
+  gaspillé pour autant : une autre pièce en demande prend le relais.
+- **Unités partielles** : aucune commande si l'unité n'expose pas le mode
+  demandé (`hvac_modes` sans `cool`/`heat`), avec notification.
+
+### Confort et stockage du gratuit
+
+Cibles communes à la maison (helpers HA), température propre à chaque pièce lue
+sur l'attribut `current_temperature` de l'unité — **aucune sonde externe
+nécessaire**. Dépassement volontaire de la cible (`CLIM_STORE_BAND`, défaut
+1,5 °C) pour stocker le gratuit dans l'inertie du bâtiment, borné par
+`CLIM_COOL_FLOOR` / `CLIM_HEAT_CEILING`. Consigne envoyée à l'unité = cible de
 stockage, son propre thermostat assurant la modulation.
 
 Sens de fonctionnement en mode `auto` : froid au-dessus de
 `CLIM_OUTDOOR_COOL_MIN` (24 °C), chaud en dessous de `CLIM_OUTDOOR_HEAT_MAX`
-(17 °C), rien entre les deux (saison neutre). Sens latché pendant un cycle,
-pas de bascule froid ↔ chaud en cours de route. Sonde extérieure absente :
-l'écart intérieur tranche seul.
+(17 °C), rien entre les deux. Sens latché par unité pendant un cycle. Sonde
+extérieure absente (`CLIM_OUTDOOR_SENSOR` vide, cas par défaut) : l'écart
+intérieur tranche seul.
 
 ### Entités et constantes (onglet Env du flow)
 
 | Variable | Défaut | Rôle |
 |---|---|---|
-| `CLIM_ENTITY` | `climate.clim` | Entité climatisation pilotée |
-| `CLIM_INDOOR_SENSOR` | `sensor.temp_salon_temperature` | Sonde intérieure (obligatoire) |
-| `CLIM_OUTDOOR_SENSOR` | `sensor.temp_exterieur_temperature` | Sonde extérieure (optionnelle) |
-| `CLIM_POWER_SENSOR` | `sensor.clim_power` | Consommation de la clim |
+| `CLIM_UNITS` | les 5 `climate.*` | Liste **ordonnée** des unités, priorité décroissante |
+| `CLIM_UNIT_LABELS` | `Salon,Cuisine,Chambre Tom,…` | Libellés d'affichage, même ordre |
+| `CLIM_OUTDOOR_SENSOR` | *(vide)* | Sonde extérieure, optionnelle |
+| `CLIM_GROUPS` | 2 disjoncteurs | Groupes de disjoncteurs (JSON) : disjoncteur, compteur, pièces |
+| `CLIM_GROUP_STANDBY_W` | `5` | Veille d'un disjoncteur, retirée du récupérable |
 | `CUMULUS_SENSOR` | `sensor.cumulus_automation` | Sensor du flow eau chaude |
 | `SOLAR_SENSOR` / `GRID_SENSOR` | `sensor.powermeter_power_a` / `_b` | Production solaire / échange réseau |
-| `CLIM_LOAD_W` | `800` | Puissance électrique de la clim (seuil de démarrage par défaut) |
+| `CLIM_LOAD_W` | `800` | Coût d'un palier, à calibrer sur `observed_draw_per_unit_w` |
 | `CUMULUS_LOAD_W` | `1200` | Puissance du cumulus (montant réservé) |
+| `HOT_WATER_PRIORITY_TEMP` | `60` | Température jusqu'à laquelle l'eau chaude est prioritaire |
+| `CLIM_MAX_UNITS` | `5` | Plafond d'unités simultanées |
 | `CLIM_MIN_RUN_MIN` / `CLIM_MIN_OFF_MIN` | `20` / `15` | Protection compresseur (min) |
-| `CLIM_HYST_MIN` | `5` | Durée de confirmation du surplus (min) |
+| `CLIM_HYST_MIN` | `5` | Confirmation d'un palier (min) |
 | `CLIM_STOP_RATIO` | `0.75` | Seuil d'arrêt en fraction du seuil de démarrage |
 | `CLIM_STORE_BAND` | `1.5` | Dépassement de cible pour le stockage (°C) |
 | `CLIM_COOL_FLOOR` / `CLIM_HEAT_CEILING` | `21` / `23` | Bornes absolues de confort (°C) |
 | `CLIM_OUTDOOR_COOL_MIN` / `CLIM_OUTDOOR_HEAT_MAX` | `24` / `17` | Bascule de saison en mode auto (°C) |
 
-Changement de `CLIM_ENTITY` : penser aux trois nœuds `climate.*` du groupe
-« Action & Sensor » et au trigger « Clim change », dont l'entité est en dur
-(la commande et la réaction instantanée en dépendent ; le tick d'une minute
-continue d'assurer la réévaluation dans tous les cas).
+Les nœuds `climate.*` ne fixent **aucune entité** : la cible est portée par
+`payload.target.entity_id`, une seule liste `CLIM_UNITS` à modifier pour
+changer d'unités. Seuls les triggers « … change » portent les entités en dur,
+pour la réaction instantanée ; le tick d'une minute assure la réévaluation
+dans tous les cas.
 
 ### Helpers Home Assistant
 
@@ -190,7 +288,7 @@ input_number:
     step: 0.5
     unit_of_measurement: "°C"
   clim_surplus_trigger:      # optionnel, défaut CLIM_LOAD_W
-    name: Seuil de surplus clim
+    name: Seuil de surplus par unité
     min: 0
     max: 3000
     step: 50
@@ -206,31 +304,39 @@ input_select:                # optionnel, défaut auto
 
 `sensor.clim_automation`, état lisible (« Rafraîchissement gratuit », « Veille
 (eau chaude prioritaire) », « Arrêt différé (anti court-cycle) »…) et attributs
-pour le dashboard, dont `available_w`, `cumulus_reserve_w`,
-`cumulus_reserve_reason`, `hot_water_priority`, `preempted_by_hot_water`,
-`need_mode`, `store_target`, `surplus_trigger`, `stop_trigger`,
-`min_run_left_min`, `min_off_left_min`, `clim_owned`, `manual_control`,
-`clim_kwh_today`. Exemples de cartes dans `dashboard-clim-snippet.yaml`.
+pour le dashboard : `available_w`, `cumulus_reserve_w`,
+`cumulus_reserve_reason`, `hot_water_priority`, `hot_water_priority_temp`,
+`preempted_by_hot_water`, `target_count`, `tier_candidate`, `fundable_units`,
+`grid_importing`, `hard_stop`, `shed_deferred`, `shed_blocked_by`,
+`active_units`, `clim_draw_recoverable`, `clim_draw_source`,
+`clim_power_total_measured`, `observed_draw_per_unit_w`, `clim_kwh_today`, plus
+deux tableaux : `units` (température, groupe, alimentation, mode demandé,
+consigne de stockage, propriété, temporisations restantes) et `groups`
+(disjoncteur, état, puissance mesurée). Exemples de cartes dans
+`dashboard-clim-snippet.yaml`.
 
-Notifications HA en cas de sonde intérieure HS (≥ 2 h), d'entité clim
-injoignable (≥ 1 h), de `sensor.cumulus_automation` introuvable, ou de mode
-demandé absent de l'unité (`mode_supported`, cas des unités n'exposant que
-`heat_cool`).
+Notifications HA : plus aucune température de pièce (≥ 2 h), unité injoignable
+(≥ 1 h), `sensor.cumulus_automation` introuvable, mode demandé absent de
+`hvac_modes`, disjoncteur coupé alors que du surplus reste disponible.
 
 ### Simulation
 
-Harnais de simulation des nœuds `function` du flow, horloge accélérée et
-registre d'états HA factice :
+Harnais exécutant les corps réels des nœuds `function` du flow, sur horloge
+accélérée et registre d'états HA factice, avec bouclage physique du compteur
+réseau (une unité qui démarre réduit l'export, comme sur l'installation) :
 
 ```
 node tests/clim-flow-sim.js
 ```
 
-18 scénarios, 76 assertions : réservation du surplus dans chaque situation du
-cumulus, préemption en cours de cycle, hystérésis, anti court-cycle, pilotage
-manuel, sonde HS, saison neutre, stockage, mode non supporté. L'arbre de
-décision y est reproduit à la main, à répercuter en cas de modification des
-nœuds `switch` dans Node-RED.
+33 scénarios, 161 assertions : réservation dans chaque situation du cumulus,
+seuil 60 °C, montée et délestage en paliers, ordre de priorité au délestage,
+garde-fou import réseau, mesure par disjoncteur et repli sur estimation,
+disjoncteur coupé, calibration sur unités inverter à 250 W, pilotage manuel par
+unité, pause 45 min, temporisations compresseur, mode non supporté, unité
+injoignable, stockage, réalignement de consigne. Les compteurs de groupe font
+partie du bouclage physique du harnais. Toute la décision vivant dans les nœuds
+`function`, le harnais rejoue le pipeline réel sans logique dupliquée.
 
 ## Installation via HACS (custom repository)
 

@@ -3,47 +3,83 @@
 # Cartes Home Assistant natives, aucune ressource Lovelace requise.
 # =============================================================
 
-# --- Vue d'ensemble : état, priorité eau chaude, budget surplus ---
+# --- Vue d'ensemble : budget de surplus et priorité eau chaude ---
 - type: markdown
   content: >-
     {% set s = states.sensor.clim_automation %}
     {% if s is none %}
     **sensor.clim_automation** absent, flow Node-RED à déployer.
     {% else %}
+    {% set a = s.attributes %}
     ## {{ s.state }}
 
-    {{ s.attributes.reason }}
+    {{ a.reason }}
 
     | | |
     |---|---|
-    | Intérieur | {{ s.attributes.indoor_temp }} °C
-      {%- if s.attributes.store_target %} → {{ s.attributes.store_target }} °C{% endif %} |
-    | Extérieur | {{ s.attributes.outdoor_temp | default('n/a') }} °C |
-    | Surplus potentiel | {{ s.attributes.potential_surplus }} W |
-    | Réservé eau chaude | {{ s.attributes.cumulus_reserve_w }} W |
-    | **Disponible clim** | **{{ s.attributes.available_w }} W**
-      (seuil {{ s.attributes.surplus_trigger }} W) |
-    | Conso clim | {{ s.attributes.clim_draw }} W
-      · {{ s.attributes.clim_kwh_today }} kWh aujourd'hui |
+    | Surplus potentiel | {{ a.potential_surplus }} W |
+    | Réservé eau chaude | {{ a.cumulus_reserve_w }} W
+      (priorité jusqu'à {{ a.hot_water_priority_temp }} °C) |
+    | **Disponible clim** | **{{ a.available_w }} W** →
+      {{ a.fundable_units }} unité(s) finançable(s) |
+    | Unités en marche | {{ a.active_count }} / {{ a.max_units }}
+      {%- if a.active_units %} ({{ a.active_units | join(', ') }}){% endif %} |
+    | Conso récupérable | {{ a.clim_draw_recoverable }} W
+      ({{ a.clim_draw_source }}) · {{ a.clim_kwh_today }} kWh aujourd'hui |
+    | Mesure disjoncteurs | {{ a.clim_power_total_measured }} W
+      {%- if a.observed_draw_per_unit_w %} · {{ a.observed_draw_per_unit_w }} W/unité
+      observés (réglage `CLIM_LOAD_W` : {{ a.clim_load_w }} W){% endif %} |
 
-    {% if s.attributes.preempted_by_hot_water %}
+    {% if a.preempted_by_hot_water %}
     ⚠️ Surplus suffisant mais **réservé à l'eau chaude** :
-    {{ s.attributes.cumulus_reserve_reason }}
-    {% elif s.attributes.min_run_left_min > 0 %}
-    ⏳ Arrêt possible dans {{ s.attributes.min_run_left_min }} min
-    (protection compresseur).
-    {% elif s.attributes.min_off_left_min > 0 %}
-    ⏳ Redémarrage possible dans {{ s.attributes.min_off_left_min }} min
-    (protection compresseur).
-    {% elif s.attributes.manual_control %}
-    ✋ Clim allumée hors automatisation, laissée telle quelle.
+    {{ a.cumulus_reserve_reason }}
+    {% elif a.hard_stop %}
+    ⛔ **Import réseau confirmé**, délestage en cours.
+    {% elif a.shed_deferred %}
+    ⏳ Délestage de {{ a.shed_blocked_by }} en attente de son min-run.
+    {% elif a.tier_pending_min > 0 %}
+    ⏳ Palier {{ a.tier_candidate }} unité(s) en confirmation,
+    {{ a.tier_pending_min }} min.
+    {% elif a.manual_count > 0 %}
+    ✋ {{ a.manual_count }} unité(s) allumée(s) hors automatisation, non modifiée(s).
     {% endif %}
+
+    {% for g in a.groups if not g.breaker_on %}
+    🔌 Disjoncteur **{{ g.name }}** hors tension : pièces de ce groupe
+    indisponibles pour le confort gratuit.
+    {% endfor %}
+    {% endif %}
+
+
+# --- Détail par pièce, dans l'ordre de priorité ---
+- type: markdown
+  content: >-
+    {% set units = state_attr('sensor.clim_automation', 'units') %}
+    {% if units %}
+    ### Pièces, par ordre de priorité
+
+    | # | Pièce | Groupe | Temp. | Demande | Consigne | État |
+    |---|---|---|---|---|---|---|
+    {% for u in units -%}
+    | {{ u.priority }} | {{ u.label }}
+    | {{ u.group | default('—') }}
+    | {{ u.current_temp if u.current_temp is not none else '—' }} °C
+    | {{ {'cool': '❄️ froid', 'heat': '🔥 chaud', 'none': '—'}[u.need_mode] }}
+    | {{ u.store_target if u.store_target is not none else '—' }}
+    | {% if not u.breaker_on %}🔌 disjoncteur coupé
+      {%- elif not u.available %}injoignable
+      {%- elif u.manual_control %}✋ manuel
+      {%- elif u.hold_active %}⏸ pause
+      {%- elif u.desired == 'on' and u.owned %}✅ en marche
+      {%- elif u.min_off_left_min > 0 %}⏳ {{ u.min_off_left_min }} min
+      {%- else %}veille{% endif %} |
+    {% endfor %}
     {% endif %}
 
 
 # --- Réglages ---
 - type: entities
-  title: Réglages climatisation gratuite
+  title: Réglages confort gratuit
   entities:
     - entity: input_boolean.clim_automation_enabled
       name: Automatisation
@@ -54,20 +90,24 @@
     - entity: input_number.clim_target_heat
       name: Cible chauffage
     - entity: input_number.clim_surplus_trigger
-      name: Seuil de surplus
+      name: Seuil de surplus par unité
     - type: divider
-    - entity: climate.clim
-      name: Climatisation
+    - entity: climate.salon_room_temperature
+      name: Salon
+    - entity: climate.daikinap21104_room_temperature
+      name: Cuisine
+    - entity: climate.chambre_tom_room_temperature
+      name: Chambre Tom
+    - entity: climate.chambre_didier_room_temperature
+      name: Chambre Didier
+    - entity: climate.chambre_marie_room_temperature
+      name: Chambre Marie
 
 
-# --- Diagnostic : décision détaillée ---
+# --- Diagnostic ---
 - type: entities
   title: Diagnostic
   entities:
-    - type: attribute
-      entity: sensor.clim_automation
-      attribute: need_mode
-      name: Sens demandé
     - type: attribute
       entity: sensor.clim_automation
       attribute: cumulus_reserve_reason
@@ -79,16 +119,32 @@
       suffix: " W"
     - type: attribute
       entity: sensor.clim_automation
-      attribute: stop_trigger
-      name: Seuil d'arrêt
+      attribute: target_count
+      name: Unités visées
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: grid_importing
+      name: Import réseau
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: clim_draw_source
+      name: Source de la conso
+    - type: attribute
+      entity: sensor.clim_automation
+      attribute: observed_draw_per_unit_w
+      name: Conso observée / unité
       suffix: " W"
+    - entity: switch.clim_avant
+      name: Disjoncteur Clim Nord
+    - entity: switch.clim_sud
+      name: Disjoncteur Clim Sud
     - type: attribute
       entity: sensor.clim_automation
-      attribute: clim_owned
-      name: Pilotée par le flow
+      attribute: eligible_count
+      name: Pièces éligibles
     - type: attribute
       entity: sensor.clim_automation
-      attribute: last_action_reason
+      attribute: last_action
       name: Dernière action
     - type: attribute
       entity: sensor.clim_automation
@@ -101,5 +157,6 @@
   content: >-
     {% set a = state_attr('sensor.clim_automation', 'available_w') %}
     {% set r = state_attr('sensor.clim_automation', 'cumulus_reserve_w') %}
-    ❄️ {{ states('sensor.clim_automation') }} · {{ a }} W libres
+    {% set n = state_attr('sensor.clim_automation', 'active_count') %}
+    ❄️ {{ states('sensor.clim_automation') }} · {{ n }} unité(s) · {{ a }} W libres
     {%- if r and r > 0 %} · {{ r }} W à l'eau chaude{% endif %}
