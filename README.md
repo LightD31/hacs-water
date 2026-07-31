@@ -55,7 +55,7 @@ Cumulus **solaire** plombé **en série, en amont** du cumulus électrique
 chauffage électrique inutile dès fourniture de l'eau à la cible par le ballon
 solaire.
 
-Lecture de la sonde du ballon solaire (`sensor.temp_cumulus_solaire_temperature`)
+Lecture de la sonde du ballon solaire (`sensor.temp_chauffe_eau_solaire_temperature`)
 par le flow et, à une priorité **inférieure** à l'anti-injection (surplus) et à
 l'anti-légionelle, coupure de l'appoint électrique dès que :
 
@@ -258,7 +258,7 @@ JSON dans `CLIM_GROUPS` :
 
 | Groupe | Disjoncteur | Compteur | Pièces |
 |---|---|---|---|
-| Clim Nord | `switch.clim_avant` | `sensor.clim_avant_power` | Salon, Cuisine |
+| Clim Nord | `switch.clim_nord` | `sensor.clim_nord_power` | Salon, Cuisine |
 | Clim Sud | `switch.clim_sud` | `sensor.clim_sud_power` | Chambre Tom, Chambre Didier, Chambre Marie |
 
 Deux apports par rapport à une simple estimation :
@@ -357,7 +357,7 @@ intérieur tranche seul.
 | `CLIM_GROUPS` | 2 disjoncteurs | Groupes de disjoncteurs (JSON) : disjoncteur, compteur, pièces |
 | `CLIM_GROUP_STANDBY_W` | `5` | Veille d'un disjoncteur, retirée du récupérable |
 | `CUMULUS_SENSOR` | `sensor.cumulus_automation` | Sensor du flow eau chaude |
-| `SOLAR_SENSOR` / `GRID_SENSOR` | `sensor.powermeter_power_a` / `_b` | Production solaire / échange réseau |
+| `SOLAR_SENSOR` / `GRID_SENSOR` | `sensor.pince_amperemetrique_power_a` / `_b` | Production solaire / échange réseau |
 | `CLIM_LOAD_W` | `800` | Coût d'un palier, à calibrer sur `observed_draw_per_unit_w` |
 | `CUMULUS_LOAD_W` | `1200` | Puissance du cumulus (montant réservé) |
 | `HOT_WATER_PRIORITY_TEMP` | `0` | Seuil fixe de priorité eau chaude ; `0` suit la cible du cumulus |

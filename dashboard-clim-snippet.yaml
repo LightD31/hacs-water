@@ -157,7 +157,7 @@
       attribute: observed_draw_per_unit_w
       name: Conso observée / unité
       suffix: " W"
-    - entity: switch.clim_avant
+    - entity: switch.clim_nord
       name: Disjoncteur Clim Nord
     - entity: switch.clim_sud
       name: Disjoncteur Clim Sud
