@@ -173,7 +173,7 @@
         "exposeAsEntityConfig": "",
         "entities": {
             "entity": [
-                "sensor.powermeter_power_a"
+                "sensor.pince_amperemetrique_power_a"
             ],
             "substring": [],
             "regex": []
@@ -212,7 +212,7 @@
         "exposeAsEntityConfig": "",
         "entities": {
             "entity": [
-                "sensor.powermeter_power_b"
+                "sensor.pince_amperemetrique_power_b"
             ],
             "substring": [],
             "regex": []
@@ -251,7 +251,7 @@
         "exposeAsEntityConfig": "",
         "entities": {
             "entity": [
-                "sensor.temp_cumulus_petit_garage_temperature"
+                "sensor.temp_chauffe_eau_electrique_temperature"
             ],
             "substring": [],
             "regex": []
@@ -355,7 +355,7 @@
         "exposeAsEntityConfig": "",
         "entities": {
             "entity": [
-                "sensor.temp_cumulus_solaire_temperature"
+                "sensor.temp_chauffe_eau_solaire_temperature"
             ],
             "substring": [],
             "regex": []
@@ -388,7 +388,7 @@
         "z": "ea320b91f27070db",
         "g": "6ba7c2472dd58523",
         "name": "Lire capteurs",
-        "func": "// === Lecture brute des entités HA ===\n// Getters + suivi disponibilité sonde. Pas de logique métier ici.\n// PREREQUIS : cocher \"Enable global context store\" sur le nœud serveur HA.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nlet g;\ntry {\n    g = global.get('homeassistant').homeAssistant.states;\n    if (!g) throw new Error('states indisponibles');\n} catch (e) {\n    node.warn('HA indisponible, tick ignoré : ' + e.message);\n    return null;\n}\n\nconst n = (id, def = 0) => {\n    const v = parseFloat(g[id]?.state);\n    return isNaN(v) ? def : v;\n};\nconst attr = (id, key) => g[id]?.attributes?.[key];\nconst attrNum = (id, key) => {\n    const v = parseFloat(g[id]?.attributes?.[key]);\n    return isNaN(v) ? null : v;\n};\nconst clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\n\n// --- Paramètres utilisateur ---\nmsg.enabled = g['input_boolean.cumulus_automation_enabled']?.state === 'on';\nmsg.target = n('input_number.cumulus_target_temp', 55);\nmsg.minT = n('input_number.cumulus_min_temp', 40);\nmsg.solarTrig = n('input_number.cumulus_solar_trigger', 1100);\n// Bornée : évite division par zéro / valeurs absurdes\nmsg.eff = clamp(n('input_number.cumulus_efficiency', 0.67), 0.3, 1);\nmsg.surplusTrig = n('input_number.cumulus_surplus_trigger', 1200);\n\n// Volume du ballon (entité optionnelle, défaut 200 L) → kWh par °C\nmsg.tankL = clamp(n('input_number.cumulus_tank_volume', 200), 50, 500);\nmsg.kwhPerDeg = msg.tankL * 4.186 / 3600;\n\n// --- Sonde température (capteur critique) ---\nconst rawTemp = g['sensor.temp_cumulus_petit_garage_temperature']?.state;\nmsg.tempAvailable =\n    rawTemp !== undefined && rawTemp !== 'unavailable' && rawTemp !== 'unknown'\n    && !isNaN(parseFloat(rawTemp));\nmsg.temp = msg.tempAvailable ? parseFloat(rawTemp) : null;\n\n// --- Cumulus solaire amont (préchauffe en série, en amont du ballon élec.) ---\nconst rawSolarTemp = g['sensor.temp_cumulus_solaire_temperature']?.state;\nmsg.solarTempAvailable =\n    rawSolarTemp !== undefined && rawSolarTemp !== 'unavailable' && rawSolarTemp !== 'unknown'\n    && !isNaN(parseFloat(rawSolarTemp));\nmsg.solarTankTemp = msg.solarTempAvailable ? parseFloat(rawSolarTemp) : null;\n\n// Suivi d'indisponibilité (pour notification en mode dégradé)\nconst nowMs = Date.now();\nif (msg.tempAvailable) {\n    setF('sondeDownSince', null);\n    msg.sondeDownHours = 0;\n} else {\n    let ds = getF('sondeDownSince');\n    if (!ds) { ds = nowMs; setF('sondeDownSince', ds); }\n    msg.sondeDownHours = Math.round((nowMs - ds) / 360000) / 10;\n}\n\n// --- Autres mesures ---\nmsg.solar = n('sensor.powermeter_power_a', 0);\nmsg.gridPower = n('sensor.powermeter_power_b', 0);\nmsg.houseConsumption = n('sensor.powermeter_power_ab', 0);\nmsg.cumulusPower = n('sensor.cumulus_power', 0);\n// Interrupteur : pas de coercition 'unavailable'→'off' (au reboot HA l'entité\n// passe par 'unavailable'/'unknown' avant de se stabiliser). Repli sur le\n// dernier état connu — évite une fausse « commande manuelle » en aval.\nconst rawSwitch = g['switch.cumulus']?.state;\nmsg.switchAvailable = rawSwitch === 'on' || rawSwitch === 'off';\nmsg.switchState = msg.switchAvailable ? rawSwitch : (getF('lastKnownSwitch') || 'off');\nif (msg.switchAvailable) setF('lastKnownSwitch', rawSwitch);\nmsg.surplus = -msg.gridPower;\n\n// --- Solcast (détaillé pour le slot par slot) ---\nconst sel = g['select.solcast_pv_forecast_utiliser_le_champ_de_prevision']?.state || 'estimate';\nmsg.forecastField = sel === 'estimate10' ? 'pv_estimate10'\n    : sel === 'estimate90' ? 'pv_estimate90'\n        : 'pv_estimate';\nmsg.forecastToday = attr('sensor.solcast_pv_forecast_previsions_pour_aujourd_hui', 'detailedForecast') || [];\nmsg.kwhToday = n('sensor.solcast_pv_forecast_previsions_pour_aujourd_hui', 0);\nmsg.kwhTodayRemaining = n('sensor.solcast_pv_forecast_previsions_de_production_restantes_aujourd_hui', 0);\nmsg.kwhTomorrow = n('sensor.solcast_pv_forecast_previsions_pour_demain', 0);\n\n// --- Percentiles p10/p90 J+1 (incertitude) ---\nmsg.kwhTomorrowP10 = attrNum('sensor.solcast_pv_forecast_previsions_pour_demain', 'estimate10');\nmsg.kwhTomorrowP90 = attrNum('sensor.solcast_pv_forecast_previsions_pour_demain', 'estimate90');\n\n// --- J+2 (après-demain) — fallback null si entité absente ---\nmsg.kwhDayAfter    = n('sensor.solcast_pv_forecast_prevision_jour_3', null);\nmsg.kwhDayAfterP10 = attrNum('sensor.solcast_pv_forecast_prevision_jour_3', 'estimate10');\nmsg.kwhDayAfterP90 = attrNum('sensor.solcast_pv_forecast_prevision_jour_3', 'estimate90');\n\nconst SOLCAST_MAX_AGE_MS = 6 * 3600 * 1000;\nconst solcastLU = g['sensor.solcast_pv_forecast_previsions_pour_aujourd_hui']?.last_updated;\nconst solcastAgeMs = solcastLU ? (Date.now() - new Date(solcastLU).getTime()) : Infinity;\nmsg.solcastStale = solcastAgeMs > SOLCAST_MAX_AGE_MS;\nmsg.solcastAgeHours = isFinite(solcastAgeMs) ? Math.round(solcastAgeMs / 360000) / 10 : null;\n\nreturn msg;",
+        "func": "// === Lecture brute des entités HA ===\n// Getters + suivi disponibilité sonde. Pas de logique métier ici.\n// PREREQUIS : cocher \"Enable global context store\" sur le nœud serveur HA.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nlet g;\ntry {\n    g = global.get('homeassistant').homeAssistant.states;\n    if (!g) throw new Error('states indisponibles');\n} catch (e) {\n    node.warn('HA indisponible, tick ignoré : ' + e.message);\n    return null;\n}\n\nconst n = (id, def = 0) => {\n    const v = parseFloat(g[id]?.state);\n    return isNaN(v) ? def : v;\n};\nconst attr = (id, key) => g[id]?.attributes?.[key];\nconst attrNum = (id, key) => {\n    const v = parseFloat(g[id]?.attributes?.[key]);\n    return isNaN(v) ? null : v;\n};\nconst clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\n\n// --- Paramètres utilisateur ---\nmsg.enabled = g['input_boolean.cumulus_automation_enabled']?.state === 'on';\nmsg.target = n('input_number.cumulus_target_temp', 55);\nmsg.minT = n('input_number.cumulus_min_temp', 40);\nmsg.solarTrig = n('input_number.cumulus_solar_trigger', 1100);\n// Bornée : évite division par zéro / valeurs absurdes\nmsg.eff = clamp(n('input_number.cumulus_efficiency', 0.67), 0.3, 1);\nmsg.surplusTrig = n('input_number.cumulus_surplus_trigger', 1200);\n\n// Volume du ballon (entité optionnelle, défaut 200 L) → kWh par °C\nmsg.tankL = clamp(n('input_number.cumulus_tank_volume', 200), 50, 500);\nmsg.kwhPerDeg = msg.tankL * 4.186 / 3600;\n\n// --- Sonde température (capteur critique) ---\nconst rawTemp = g['sensor.temp_chauffe_eau_electrique_temperature']?.state;\nmsg.tempAvailable =\n    rawTemp !== undefined && rawTemp !== 'unavailable' && rawTemp !== 'unknown'\n    && !isNaN(parseFloat(rawTemp));\nmsg.temp = msg.tempAvailable ? parseFloat(rawTemp) : null;\n\n// --- Cumulus solaire amont (préchauffe en série, en amont du ballon élec.) ---\nconst rawSolarTemp = g['sensor.temp_chauffe_eau_solaire_temperature']?.state;\nmsg.solarTempAvailable =\n    rawSolarTemp !== undefined && rawSolarTemp !== 'unavailable' && rawSolarTemp !== 'unknown'\n    && !isNaN(parseFloat(rawSolarTemp));\nmsg.solarTankTemp = msg.solarTempAvailable ? parseFloat(rawSolarTemp) : null;\n\n// Suivi d'indisponibilité (pour notification en mode dégradé)\nconst nowMs = Date.now();\nif (msg.tempAvailable) {\n    setF('sondeDownSince', null);\n    msg.sondeDownHours = 0;\n} else {\n    let ds = getF('sondeDownSince');\n    if (!ds) { ds = nowMs; setF('sondeDownSince', ds); }\n    msg.sondeDownHours = Math.round((nowMs - ds) / 360000) / 10;\n}\n\n// --- Autres mesures ---\nmsg.solar = n('sensor.pince_amperemetrique_power_a', 0);\nmsg.gridPower = n('sensor.pince_amperemetrique_power_b', 0);\nmsg.houseConsumption = n('sensor.pince_amperemetrique_power_ab', 0);\nmsg.cumulusPower = n('sensor.chauffe_eau_electrique_power', 0);\n// Interrupteur : pas de coercition 'unavailable'→'off' (au reboot HA l'entité\n// passe par 'unavailable'/'unknown' avant de se stabiliser). Repli sur le\n// dernier état connu — évite une fausse « commande manuelle » en aval.\nconst rawSwitch = g['switch.chauffe_eau_electrique']?.state;\nmsg.switchAvailable = rawSwitch === 'on' || rawSwitch === 'off';\nmsg.switchState = msg.switchAvailable ? rawSwitch : (getF('lastKnownSwitch') || 'off');\nif (msg.switchAvailable) setF('lastKnownSwitch', rawSwitch);\nmsg.surplus = -msg.gridPower;\n\n// --- Solcast (détaillé pour le slot par slot) ---\nconst sel = g['select.solcast_pv_forecast_utiliser_le_champ_de_prevision']?.state || 'estimate';\nmsg.forecastField = sel === 'estimate10' ? 'pv_estimate10'\n    : sel === 'estimate90' ? 'pv_estimate90'\n        : 'pv_estimate';\nmsg.forecastToday = attr('sensor.solcast_pv_forecast_previsions_pour_aujourd_hui', 'detailedForecast') || [];\nmsg.kwhToday = n('sensor.solcast_pv_forecast_previsions_pour_aujourd_hui', 0);\nmsg.kwhTodayRemaining = n('sensor.solcast_pv_forecast_previsions_de_production_restantes_aujourd_hui', 0);\nmsg.kwhTomorrow = n('sensor.solcast_pv_forecast_previsions_pour_demain', 0);\n\n// --- Percentiles p10/p90 J+1 (incertitude) ---\nmsg.kwhTomorrowP10 = attrNum('sensor.solcast_pv_forecast_previsions_pour_demain', 'estimate10');\nmsg.kwhTomorrowP90 = attrNum('sensor.solcast_pv_forecast_previsions_pour_demain', 'estimate90');\n\n// --- J+2 (après-demain) — fallback null si entité absente ---\nmsg.kwhDayAfter    = n('sensor.solcast_pv_forecast_prevision_jour_3', null);\nmsg.kwhDayAfterP10 = attrNum('sensor.solcast_pv_forecast_prevision_jour_3', 'estimate10');\nmsg.kwhDayAfterP90 = attrNum('sensor.solcast_pv_forecast_prevision_jour_3', 'estimate90');\n\nconst SOLCAST_MAX_AGE_MS = 6 * 3600 * 1000;\nconst solcastLU = g['sensor.solcast_pv_forecast_previsions_pour_aujourd_hui']?.last_updated;\nconst solcastAgeMs = solcastLU ? (Date.now() - new Date(solcastLU).getTime()) : Infinity;\nmsg.solcastStale = solcastAgeMs > SOLCAST_MAX_AGE_MS;\nmsg.solcastAgeHours = isFinite(solcastAgeMs) ? Math.round(solcastAgeMs / 360000) / 10 : null;\n\nreturn msg;",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
@@ -1275,7 +1275,7 @@
         "areaId": [],
         "deviceId": [],
         "entityId": [
-            "switch.cumulus"
+            "switch.chauffe_eau_electrique"
         ],
         "labelId": [],
         "data": "",
@@ -1307,7 +1307,7 @@
         "areaId": [],
         "deviceId": [],
         "entityId": [
-            "switch.cumulus"
+            "switch.chauffe_eau_electrique"
         ],
         "labelId": [],
         "data": "",

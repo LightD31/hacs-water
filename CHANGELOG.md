@@ -2,6 +2,28 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.20.1] - 2026-07-31
+
+- **Entités renommées côté Home Assistant** répercutées dans les flows, la
+  simulation, le snippet de dashboard et le README. Aucun changement de
+  comportement : seuls les `entity_id` par défaut changent.
+
+  | Avant | Après |
+  |---|---|
+  | `switch.cumulus` | `switch.chauffe_eau_electrique` |
+  | `sensor.cumulus_power` | `sensor.chauffe_eau_electrique_power` |
+  | `sensor.temp_cumulus_petit_garage_temperature` | `sensor.temp_chauffe_eau_electrique_temperature` |
+  | `sensor.temp_cumulus_solaire_temperature` | `sensor.temp_chauffe_eau_solaire_temperature` |
+  | `sensor.powermeter_power_a` / `_b` / `_ab` | `sensor.pince_amperemetrique_power_a` / `_b` / `_ab` |
+  | `switch.clim_avant` | `switch.clim_nord` |
+  | `sensor.clim_avant_power` | `sensor.clim_nord_power` |
+
+  Les entités produites par les flows (`sensor.cumulus_automation`,
+  `sensor.clim_automation`), les helpers `input_*` et les unités `climate.*`
+  sont inchangés, donc les cartes Lovelace ne bougent pas.
+- Fichiers modifiés : `flows.json`, `flows-clim.json`, `tests/clim-flow-sim.js`,
+  `dashboard-clim-snippet.yaml`, `README.md`, `CHANGELOG.md`.
+
 ## [v1.20.0] - 2026-07-27
 
 - **Ordre de priorité des pièces réordonnable depuis la carte.** L'ordre vivait

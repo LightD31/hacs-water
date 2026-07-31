@@ -78,8 +78,8 @@ function physics(ctx) {
     const cu = ctx.states['sensor.cumulus_automation'];
     const cuPower = cu ? (parseFloat(cu.attributes.cumulus_power) || 0) : 0;
     const exported = ctx.surplusBase - total - cuPower;
-    ctx.states['sensor.powermeter_power_b'].state = String(-exported);
-    ctx.states['sensor.powermeter_power_a'].state = String(ctx.solar != null
+    ctx.states['sensor.pince_amperemetrique_power_b'].state = String(-exported);
+    ctx.states['sensor.pince_amperemetrique_power_a'].state = String(ctx.solar != null
         ? ctx.solar : Math.max(ctx.surplusBase, 0) + 1000);
 }
 
@@ -137,8 +137,8 @@ function states(o = {}) {
         order: null, ...o,
     };
     const st = {
-        'sensor.powermeter_power_a': { state: String(d.solar) },
-        'sensor.powermeter_power_b': { state: String(d.grid) },
+        'sensor.pince_amperemetrique_power_a': { state: String(d.solar) },
+        'sensor.pince_amperemetrique_power_b': { state: String(d.grid) },
         'input_boolean.clim_automation_enabled': { state: d.enabled },
         'input_select.clim_season_mode': { state: d.season },
         'input_number.clim_target_cool': { state: String(d.targetCool) },
@@ -294,8 +294,8 @@ scenario('5. Montée en paliers : +1 unité par palier confirmé', () => {
     check('4e unité non finançable (2600 W)', onCount(ctx) === 3, onLabels(ctx).join(','));
     check('surplus dispo stable à 2600 W', m.availableW === 2600, String(m.availableW));
     check('aucun watt pris au réseau',
-        parseFloat(ctx.states['sensor.powermeter_power_b'].state) <= 0,
-        ctx.states['sensor.powermeter_power_b'].state);
+        parseFloat(ctx.states['sensor.pince_amperemetrique_power_b'].state) <= 0,
+        ctx.states['sensor.pince_amperemetrique_power_b'].state);
 });
 
 scenario('6. Délestage : le moins prioritaire part en premier', () => {
@@ -515,7 +515,7 @@ scenario('22. Délestage différé par min-run, sans import réseau', () => {
     let m = run(ctx, 8);
     check('budget réduit à 600 W', m.availableW === 600, String(m.availableW));
     check('aucun import réseau', m.gridImporting === false,
-        ctx.states['sensor.powermeter_power_b'].state + ' W au compteur');
+        ctx.states['sensor.pince_amperemetrique_power_b'].state + ' W au compteur');
     check('pas de hardStop', m.hardStop === false);
     check('délestage annoncé mais différé', m.shedDeferred === true,
         'target=' + m.targetCount);
@@ -647,7 +647,7 @@ scenario('31. Unités inverter à 250 W : calibration de CLIM_LOAD_W', () => {
     check('consommation observée par unité exposée', m.observedDrawPerUnit === 250,
         String(m.observedDrawPerUnit));
     check('aucun import réseau', m.gridImporting === false,
-        ctx.states['sensor.powermeter_power_b'].state + ' W');
+        ctx.states['sensor.pince_amperemetrique_power_b'].state + ' W');
     const at = m.sensor.attributes;
     check('écart de calibration visible dans le sensor',
         at.observed_draw_per_unit_w === 250 && at.clim_load_w === 800,
