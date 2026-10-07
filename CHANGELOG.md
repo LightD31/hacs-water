@@ -40,6 +40,12 @@ Modifications notables de ce dépôt, listées ci-dessous.
   domaine, comme celui de la carte cumulus. Champ de contrôle vidé : ligne
   masquée.
 - `documentationURL` de la carte cumulus pointé sur ce dépôt.
+- **Éditeurs visuels, section « Contrôles » inutilisable** (les deux cartes,
+  défaut antérieur côté cumulus) : une entité choisie s'effaçait aussitôt.
+  Sans `flatten`, `ha-form` imbrique les champs d'une section repliable sous
+  son nom (`controls_section.ctrl_…`), alors que l'éditeur les lit à la
+  racine : changement ignoré, formulaire réinitialisé. Champs également vides
+  à l'ouverture. Section désormais aplatie.
 - Versions : `cumulus-solaire-card` 1.12.0, `clim-solaire-card` 1.1.0.
 - Fichiers modifiés : `cumulus-solaire-card.js`, `clim-solaire-card.js`,
   `hacs-water.js` (régénéré), `README.md`, `CHANGELOG.md`.

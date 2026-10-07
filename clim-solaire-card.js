@@ -1199,6 +1199,7 @@ class ClimSolaireCardEditor extends HTMLElement {
       {
         name: 'controls_section',
         type: 'expandable',
+        flatten: true,   // champs à la racine de data, sinon imbriqués sous controls_section
         title: 'Contrôles',
         expanded: true,
         schema: CONTROL_ORDER.map((key) => ({
