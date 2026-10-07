@@ -129,6 +129,9 @@ entity: sensor.clim_automation
 | `entity` | string | **requis** | Sensor produit par le flow clim |
 | `show_units` | bool | `true` | Liste des pièces |
 | `show_settings` | string/bool | `'collapsible'` | `'collapsible'` · `'expanded'` · `false` |
+| `lock` | bool | `true` | Réglages et réordonnancement verrouillés (voir [Verrou des commandes](#verrou-des-commandes)) |
+| `lock_timeout` | number | `30` | Secondes d'inactivité avant reverrouillage |
+| `admin_only` | bool | `false` | Lecture seule pour les utilisateurs non administrateurs |
 | `controls` | object | (voir ci-dessous) | Helpers pilotés, `false` masque une ligne |
 
 | Clé `controls` | Type | Helper par défaut |
@@ -626,6 +629,9 @@ forecast_entity: sensor.solcast_pv_forecast_previsions_pour_aujourd_hui
 | `forecast_entity` | string | `sensor.solcast_pv_forecast_previsions_pour_aujourd_hui` | Capteur Solcast pour la courbe du jour, avec attribut `detailedForecast` requis. |
 | `show_settings` | string/bool | `'collapsible'` | `'collapsible'` (défaut, repliable, fermé au départ) · `'expanded'` (toujours ouvert) · `false` (masqué) |
 | `controls` | object | (voir ci-dessous) | Mapping des helpers HA contrôlés par les sliders et le toggle |
+| `lock` | bool | `true` | Réglages verrouillés jusqu'au tap sur « Déverrouiller » |
+| `lock_timeout` | number | `30` | Secondes d'inactivité avant reverrouillage |
+| `admin_only` | bool | `false` | Lecture seule pour les utilisateurs non administrateurs |
 
 Champ Solcast affiché (`pv_estimate`, `pv_estimate10`, `pv_estimate90`) aligné sur l'attribut `forecast_field` exposé par le sensor cumulus, sélecteur Solcast maître.
 
@@ -668,6 +674,39 @@ Pour un panneau toujours déplié (carte plus grande mais tout visible) :
 
 ```yaml
 show_settings: expanded
+```
+
+### Verrou des commandes
+
+Sur un mur de dashboard ou un téléphone, un défilement qui accroche un slider
+suffisait à changer une cible. Les deux cartes verrouillent donc leurs
+commandes par défaut :
+
+- **Verrouillé** : sliders, interrupteur et sélecteur grisés et inertes,
+  bandeau « Réglages verrouillés » en tête du panneau. Sur la carte clim, le
+  bouton ⇅ de réordonnancement est remplacé par un cadenas.
+- **Déverrouiller** : un tap sur le bouton du bandeau (ou sur le cadenas de la
+  liste des pièces) rend les commandes actives.
+- **Reverrouillage automatique** après `lock_timeout` secondes sans
+  interaction (30 s par défaut). Chaque réglage repousse l'échéance, le verrou
+  ne retombe jamais au milieu d'un ajustement. Replier le panneau ou taper
+  « Verrouiller » reverrouille immédiatement.
+- **`admin_only: true`** : pour un utilisateur non administrateur, commandes en
+  lecture seule, sans bouton de déverrouillage. Garde-fou d'interface
+  seulement : un utilisateur HA peut toujours appeler les services par
+  d'autres moyens, les droits réels restent ceux de Home Assistant.
+
+```yaml
+type: custom:cumulus-solaire-card
+entity: sensor.cumulus_automation
+lock_timeout: 60     # reverrouillage après 1 min d'inactivité
+admin_only: true     # famille en lecture seule
+```
+
+Pour retrouver le comportement précédent (commandes toujours actives) :
+
+```yaml
+lock: false
 ```
 
 ## Comportement des couleurs

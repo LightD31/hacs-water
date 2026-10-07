@@ -2,6 +2,23 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.21.0] - 2026-10-07
+
+- **Verrou des commandes sur les deux cartes.** Un défilement qui accrochait un
+  slider suffisait à changer une cible. Réglages et réordonnancement des pièces
+  sont désormais verrouillés par défaut : bouton « Déverrouiller », puis
+  reverrouillage après 30 s sans interaction (`lock_timeout`), chaque réglage
+  repoussant l'échéance. Replier le panneau reverrouille aussitôt. `lock: false`
+  rétablit le comportement précédent.
+- **`admin_only`** : lecture seule pour les utilisateurs non administrateurs,
+  sans bouton de déverrouillage. Garde-fou d'interface uniquement.
+- Les appels de service sont aussi refusés côté code tant que la carte est
+  verrouillée, pas seulement par l'attribut `disabled` des contrôles.
+- Options exposées dans les deux éditeurs visuels.
+- Versions : `cumulus-solaire-card` 1.12.0, `clim-solaire-card` 1.1.0.
+- Fichiers modifiés : `cumulus-solaire-card.js`, `clim-solaire-card.js`,
+  `hacs-water.js` (régénéré), `README.md`, `CHANGELOG.md`.
+
 ## [v1.20.1] - 2026-07-31
 
 - **Entités renommées côté Home Assistant** répercutées dans les flows, la
