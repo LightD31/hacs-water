@@ -13,10 +13,13 @@
  *   5. Chemin de décision (6 priorités du flow)
  *   6. Réglages (toggle + sélecteur + sliders, repliable)
  *
+ * Les commandes (réglages, réordonnancement) sont verrouillées par défaut :
+ * déverrouillage explicite, puis reverrouillage après une période d'inactivité.
+ *
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 console.info(
   `%c CLIM-SOLAIRE-CARD %c v${VERSION} `,
@@ -109,16 +112,39 @@ class ClimSolaireCard extends HTMLElement {
     this._config = {
       show_settings: 'collapsible',   // 'collapsible' | 'expanded' | false
       show_units: true,
+      lock: true,                     // commandes verrouillées jusqu'à déverrouillage
+      lock_timeout: 30,               // s d'inactivité avant reverrouillage
+      admin_only: false,              // lecture seule pour les non-administrateurs
       ...config,
       controls,
     };
     this._built = false;
   }
 
+  disconnectedCallback() {
+    clearTimeout(this._lockTimer);
+    this._cancelConfirm();
+    this._unlocked = false;
+    this._reorder = false;
+  }
+
+  // HA pousse un nouvel objet hass à chaque changement d'état de N'IMPORTE
+  // quelle entité : la carte ne se redessine que si l'une des siennes a bougé.
   set hass(hass) {
+    const prev = this._hass;
     this._hass = hass;
-    if (!this._built) this._build();
-    this._render();
+    const fresh = !this._built;
+    if (fresh) this._build();
+    if (fresh || !prev || this._watchedChanged(prev, hass)) this._render();
+  }
+
+  _watchedChanged(prev, hass) {
+    const admin = (h) => !!(h.user && h.user.is_admin);
+    if (admin(prev) !== admin(hass)) return true;
+    const ids = [this._config.entity];
+    for (const c of Object.values(this._config.controls)) ids.push(c.entity);
+    if (this._attrs && this._attrs.priority_helper) ids.push(this._attrs.priority_helper);
+    return ids.some((id) => prev.states[id] !== hass.states[id]);
   }
 
   getCardSize() {
@@ -199,10 +225,12 @@ class ClimSolaireCard extends HTMLElement {
     this._el.settingsToggle.addEventListener('click', () => {
       this._settingsOpen = !this._settingsOpen;
       this._applySettingsOpen();
+      if (!this._settingsOpen && this._unlocked) this._relock();
     });
 
     this._settingsOpen = this._config.show_settings === 'expanded';
     this._pathOpen = false;
+    this._settingsSig = null;
     this._built = true;
   }
 
@@ -377,8 +405,8 @@ class ClimSolaireCard extends HTMLElement {
     // Le réordonnancement n'est proposé que si le helper existe réellement :
     // sans lui, l'ordre vient de CLIM_UNITS et n'est pas modifiable d'ici.
     const helper = a.priority_helper;
-    const canReorder = !!(helper && this._hass.states[helper]);
-    if (!canReorder) this._reorder = false;
+    const canReorder = !!(helper && this._hass.states[helper]) && !this._readOnly();
+    if (!canReorder || this._locked()) this._reorder = false;
 
     // Affichage optimiste : le flow met quelques secondes à republier son
     // sensor, l'ordre demandé est donc appliqué localement en attendant.
@@ -440,7 +468,12 @@ class ClimSolaireCard extends HTMLElement {
     const head = `
       <div class="units-head">
         <span>Pièces, par priorité</span>
-        ${canReorder ? `
+        ${canReorder && this._locked() ? `
+          <button class="info-btn" data-lock="unlock"
+                  title="Déverrouiller pour réordonner" aria-label="Déverrouiller pour réordonner">
+            <ha-icon icon="mdi:lock-outline"></ha-icon>
+          </button>` : ''}
+        ${canReorder && !this._locked() ? `
           <button class="info-btn${this._reorder ? ' on' : ''}" id="reorderBtn"
                   title="Réordonner les priorités" aria-label="Réordonner les priorités">
             <ha-icon icon="${this._reorder ? 'mdi:check' : 'mdi:swap-vertical'}"></ha-icon>
@@ -462,10 +495,13 @@ class ClimSolaireCard extends HTMLElement {
     if (btn) {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (this._locked()) return;
         this._reorder = !this._reorder;
+        this._armRelock();
         this._render();
       });
     }
+    this._wireLock(this._el.units);
     this._el.units.querySelectorAll('.mv').forEach((el) => {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -478,6 +514,8 @@ class ClimSolaireCard extends HTMLElement {
   // la prise en compte est donc immédiate ; l'affichage est optimiste en
   // attendant que le sensor soit republié.
   _movePriority(units, index, delta) {
+    if (this._locked()) return;
+    this._armRelock();
     const j = index + delta;
     if (j < 0 || j >= units.length) return;
     const order = units.map((u) => u.entity_id);
@@ -535,6 +573,9 @@ class ClimSolaireCard extends HTMLElement {
 
   // ---------- Réglages ----------
 
+  // Le panneau n'est reconstruit que si sa structure change (helper apparu ou
+  // disparu, options d'un sélecteur, verrou). Sinon les valeurs sont mises à
+  // jour en place : un curseur tenu ne saute plus à chaque republication.
   _renderSettings(autoAttrs) {
     if (this._config.show_settings === false) {
       this._el.settings.style.display = 'none';
@@ -544,7 +585,25 @@ class ClimSolaireCard extends HTMLElement {
     this._applySettingsOpen();
 
     const hass = this._hass;
-    let html = '';
+    const sig = [this._locked(), this._readOnly(), this._config.lock !== false];
+    for (const key of CONTROL_ORDER) {
+      const c = this._config.controls[key];
+      const st = c && hass.states[c.entity];
+      sig.push(key, !c ? 'x' : !st ? 'missing'
+        : c.type === 'select' ? (st.attributes.options || []).join('|') : 'ok');
+    }
+    const signature = JSON.stringify(sig);
+    if (signature !== this._settingsSig) {
+      this._settingsSig = signature;
+      this._buildSettings();
+    }
+    this._updateSettings(autoAttrs);
+  }
+
+  _buildSettings() {
+    const hass = this._hass;
+    const dis = this._locked() ? ' disabled' : '';
+    let html = this._lockRowHtml();
     for (const key of CONTROL_ORDER) {
       const c = this._config.controls[key];
       if (!c) continue;
@@ -554,54 +613,161 @@ class ClimSolaireCard extends HTMLElement {
         html += `<div class="row missing">${esc(c.label)} : <code>${esc(c.entity)}</code> introuvable</div>`;
         continue;
       }
+      const icon = c.icon ? `<ha-icon icon="${c.icon}"></ha-icon>` : '';
+      const desc = c.desc ? `<div class="row-desc">${esc(c.desc)}</div>` : '';
 
       if (c.type === 'toggle') {
         html += `
-          <div class="row">
+          <div class="row" data-row="${key}">
             <div class="row-head">
               <span class="row-label">${esc(c.label)}</span>
               <label class="sw">
-                <input type="checkbox" data-ctl="${key}" ${st.state === 'on' ? 'checked' : ''}>
+                <input type="checkbox" data-ctl="${key}"${dis}>
                 <span class="sw-track"></span>
               </label>
             </div>
           </div>`;
       } else if (c.type === 'select') {
         const opts = (st.attributes.options || [])
-          .map((o) => `<option value="${esc(o)}"${o === st.state ? ' selected' : ''}>${esc(o)}</option>`)
-          .join('');
+          .map((o) => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
         html += `
-          <div class="row">
+          <div class="row" data-row="${key}">
             <div class="row-head">
-              <span class="row-label">${c.icon ? `<ha-icon icon="${c.icon}"></ha-icon>` : ''}${esc(c.label)}</span>
-              <select class="sel" data-ctl="${key}">${opts}</select>
+              <span class="row-label">${icon}${esc(c.label)}</span>
+              <select class="sel" data-ctl="${key}"${dis}>${opts}</select>
             </div>
-            ${c.desc ? `<div class="row-desc">${esc(c.desc)}</div>` : ''}
+            ${desc}
           </div>`;
       } else {
-        const min = Number(st.attributes.min != null ? st.attributes.min : 0);
-        const max = Number(st.attributes.max != null ? st.attributes.max : 100);
-        const step = Number(st.attributes.step != null ? st.attributes.step : 1);
-        const unit = st.attributes.unit_of_measurement || '';
-        const val = Number(st.state);
-        let sub = '';
-        if (c.subtitleAttr && autoAttrs[c.subtitleAttr] != null) {
-          sub = `<span class="row-sub">${esc(c.subtitleLabel)} ${autoAttrs[c.subtitleAttr]}${esc(c.subtitleUnit || '')}</span>`;
-        }
         html += `
-          <div class="row">
+          <div class="row" data-row="${key}">
             <div class="row-head">
-              <span class="row-label">${c.icon ? `<ha-icon icon="${c.icon}"></ha-icon>` : ''}${esc(c.label)}</span>
-              <span class="row-value">${isNaN(val) ? '—' : val}${esc(unit)} ${sub}</span>
+              <span class="row-label">${icon}${esc(c.label)}</span>
+              <span class="row-value"><span data-rv="${key}">—</span>
+                <span class="row-sub" data-sub="${key}"></span></span>
             </div>
-            <input type="range" data-ctl="${key}" min="${min}" max="${max}" step="${step}"
-                   value="${isNaN(val) ? min : val}">
-            ${c.desc ? `<div class="row-desc">${esc(c.desc)}</div>` : ''}
+            <input type="range" data-ctl="${key}"${dis}>
+            ${desc}
           </div>`;
       }
     }
+    this._el.settingsBody.classList.toggle('locked', !!dis);
     this._el.settingsBody.innerHTML = html;
     this._wireControls();
+    this._wireLock(this._el.settingsBody);
+  }
+
+  _updateSettings(autoAttrs) {
+    const body = this._el.settingsBody;
+    body.querySelectorAll('[data-ctl]').forEach((el) => {
+      const c = this._config.controls[el.dataset.ctl];
+      const st = c && this._hass.states[c.entity];
+      if (!st) return;
+      if (el.type === 'checkbox') {
+        // Coupure en attente de confirmation : l'interrupteur reste sur l'état réel
+        el.checked = st.state === 'on';
+      } else if (el.tagName === 'SELECT') {
+        if (this.shadowRoot.activeElement !== el) el.value = st.state;
+      } else {
+        const a = st.attributes;
+        el.min = a.min != null ? a.min : 0;
+        el.max = a.max != null ? a.max : 100;
+        el.step = a.step != null ? a.step : 1;
+        const val = Number(st.state);
+        // Valeur envoyée en attente de retour de HA : on la garde affichée
+        // plutôt que de revenir un instant sur l'ancienne.
+        const held = el._sent != null && Date.now() < el._sentUntil && Number(el._sent) !== val;
+        if (!held) el._sent = null;
+        if (!el._dragging && !held && !isNaN(val)) {
+          el.value = val;
+          this._showSliderValue(el, c, st);
+        }
+        const sub = body.querySelector(`[data-sub="${el.dataset.ctl}"]`);
+        if (sub) {
+          const v = c.subtitleAttr ? autoAttrs[c.subtitleAttr] : null;
+          sub.textContent = v != null
+            ? `${c.subtitleLabel} ${v}${c.subtitleUnit || ''}` : '';
+        }
+      }
+    });
+  }
+
+  _showSliderValue(el, c, st) {
+    const rv = this._el.settingsBody.querySelector(`[data-rv="${el.dataset.ctl}"]`);
+    if (!rv) return;
+    const step = Number(el.step) || 1;
+    const digits = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
+    const unit = (st && st.attributes.unit_of_measurement) || '';
+    rv.textContent = `${Number(el.value).toFixed(digits)}${unit}`;
+  }
+
+  // ---------- Verrou ----------
+
+  // Lecture seule imposée : option admin_only et utilisateur non administrateur.
+  // Garde-fou d'interface uniquement, les droits réels restent ceux de HA.
+  _readOnly() {
+    const u = this._hass && this._hass.user;
+    return !!(this._config.admin_only && u && !u.is_admin);
+  }
+
+  _locked() {
+    if (this._readOnly()) return true;
+    return this._config.lock !== false && !this._unlocked;
+  }
+
+  _lockTimeoutMs() {
+    const s = Number(this._config.lock_timeout);
+    return (isFinite(s) && s > 0 ? s : 30) * 1000;
+  }
+
+  _unlock() {
+    if (this._readOnly()) return;
+    this._unlocked = true;
+    this._armRelock();
+    this._render();
+  }
+
+  _relock() {
+    clearTimeout(this._lockTimer);
+    this._cancelConfirm();
+    this._unlocked = false;
+    this._reorder = false;
+    if (this._hass) this._render();
+  }
+
+  // Chaque interaction repousse le reverrouillage : il ne survient qu'après
+  // une vraie période d'inactivité, jamais au milieu d'un réglage.
+  _armRelock() {
+    if (this._config.lock === false) return;
+    clearTimeout(this._lockTimer);
+    this._lockTimer = setTimeout(() => this._relock(), this._lockTimeoutMs());
+  }
+
+  _lockRowHtml() {
+    if (this._readOnly()) {
+      return `<div class="lock-row"><ha-icon icon="mdi:lock-outline"></ha-icon>
+        <span class="lock-l">Lecture seule, réglages réservés aux administrateurs</span></div>`;
+    }
+    if (this._config.lock === false) return '';
+    if (this._locked()) {
+      return `<div class="lock-row"><ha-icon icon="mdi:lock-outline"></ha-icon>
+        <span class="lock-l">Réglages verrouillés</span>
+        <button class="lock-btn" data-lock="unlock">Déverrouiller</button></div>`;
+    }
+    return `<div class="lock-row open"><ha-icon icon="mdi:lock-open-variant-outline"></ha-icon>
+      <span class="lock-l">Déverrouillé, reverrouillage après
+        ${Math.round(this._lockTimeoutMs() / 1000)}${nbsp}s d'inactivité</span>
+      <button class="lock-btn" data-lock="lock">Verrouiller</button></div>`;
+  }
+
+  _wireLock(root) {
+    root.querySelectorAll('[data-lock]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (el.dataset.lock === 'unlock') this._unlock();
+        else this._relock();
+      });
+    });
   }
 
   _wireControls() {
@@ -609,31 +775,84 @@ class ClimSolaireCard extends HTMLElement {
       const key = el.dataset.ctl;
       const c = this._config.controls[key];
       if (!c) return;
+      const domain = c.entity.split('.')[0];
       if (el.type === 'checkbox') {
         el.addEventListener('change', () => {
-          this._hass.callService('input_boolean', 'toggle', { entity_id: c.entity });
+          if (this._locked()) { el.checked = !el.checked; return; }
+          this._armRelock();
+          const on = el.checked;
+          if (on || key !== 'enabled') { this._setToggle(c.entity, on); return; }
+          // Couper l'automatisation laisse les unités sans pilote : confirmation
+          el.checked = true;
+          this._confirm(el.closest('.row'),
+            'Couper l\'automatisation ? Les unités ne seront plus pilotées.', 'Couper',
+            () => this._setToggle(c.entity, false));
         });
       } else if (el.tagName === 'SELECT') {
         el.addEventListener('change', () => {
-          this._hass.callService('input_select', 'select_option',
-            { entity_id: c.entity, option: el.value });
+          if (this._locked()) return;
+          this._armRelock();
+          const svc = domain === 'select' ? 'select' : 'input_select';
+          this._hass.callService(svc, 'select_option', { entity_id: c.entity, option: el.value });
         });
       } else {
+        // Glissé : affichage seul. Envoi au relâché uniquement, une valeur
+        // intermédiaire ne part jamais vers HA.
+        const stopDrag = () => { el._dragging = false; };
+        el.addEventListener('pointerdown', () => { el._dragging = true; });
+        el.addEventListener('pointerup', stopDrag);
+        el.addEventListener('pointercancel', stopDrag);
         el.addEventListener('input', () => {
-          const head = el.parentElement.querySelector('.row-value');
-          if (head) head.childNodes[0].nodeValue = el.value;
+          this._armRelock();
+          this._showSliderValue(el, c, this._hass.states[c.entity]);
         });
-        // Envoi différé de 250 ms : le curseur ne spamme pas le bus HA
         el.addEventListener('change', () => {
-          clearTimeout(this._debounce);
+          el._dragging = false;
+          if (this._locked()) return;
+          this._armRelock();
           const v = Number(el.value);
-          this._debounce = setTimeout(() => {
-            this._hass.callService('input_number', 'set_value',
-              { entity_id: c.entity, value: v });
-          }, 250);
+          el._sent = v;
+          el._sentUntil = Date.now() + 5000;
+          const svc = domain === 'number' ? 'number' : 'input_number';
+          this._hass.callService(svc, 'set_value', { entity_id: c.entity, value: v });
         });
       }
     });
+  }
+
+  // Service explicite on/off plutôt que toggle : si l'état a changé entre-temps
+  // (autre écran, automatisation), un toggle ferait l'inverse de ce qui est vu.
+  _setToggle(entityId, on) {
+    const domain = entityId.split('.')[0];
+    const svc = domain === 'input_boolean' || domain === 'switch' ? domain : 'homeassistant';
+    this._hass.callService(svc, on ? 'turn_on' : 'turn_off', { entity_id: entityId });
+  }
+
+  // Barre de confirmation sous la ligne concernée, annulée d'elle-même après 8 s
+  _confirm(anchor, text, okLabel, onOk) {
+    this._cancelConfirm();
+    if (!anchor) return;
+    const bar = document.createElement('div');
+    bar.className = 'confirm';
+    bar.innerHTML = `<span class="confirm-l">${esc(text)}</span>
+      <button class="confirm-btn" data-c="no">Annuler</button>
+      <button class="confirm-btn ok" data-c="yes">${esc(okLabel)}</button>`;
+    bar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const b = e.target.closest('[data-c]');
+      if (!b) return;
+      this._cancelConfirm();
+      if (b.dataset.c === 'yes' && !this._locked()) onOk();
+    });
+    anchor.appendChild(bar);
+    this._confirmBar = bar;
+    this._confirmTimer = setTimeout(() => this._cancelConfirm(), 8000);
+  }
+
+  _cancelConfirm() {
+    clearTimeout(this._confirmTimer);
+    if (this._confirmBar) this._confirmBar.remove();
+    this._confirmBar = null;
   }
 
   _moreInfo(entityId) {
@@ -856,6 +1075,39 @@ class ClimSolaireCard extends HTMLElement {
       .sw input:checked + .sw-track { background: var(--clc-accent); }
       .sw input:checked + .sw-track::before { transform: translateX(18px); }
 
+      /* Verrou */
+      .lock-row {
+        display: flex; align-items: center; gap: 8px; padding: 6px 0 8px 0;
+        font-size: 0.78rem; color: var(--clc-text-2);
+      }
+      .lock-row ha-icon { --mdc-icon-size: 17px; flex: none; }
+      .lock-row.open ha-icon { color: var(--clc-accent); }
+      .lock-l { flex: 1; min-width: 0; line-height: 1.3; }
+      .lock-btn {
+        flex: none; font-family: inherit; font-size: 0.76rem; cursor: pointer;
+        padding: 4px 10px; border-radius: 12px; color: var(--clc-text);
+        border: 1px solid var(--clc-divider); background: transparent;
+      }
+      .lock-row:not(.open) .lock-btn { border-color: var(--clc-accent); color: var(--clc-accent); }
+      .settings-body.locked .row:not(.missing) { opacity: 0.55; }
+
+      /* Confirmation */
+      .confirm {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px;
+        margin-top: 8px; padding: 8px 10px; border-radius: 10px;
+        background: color-mix(in srgb, #e53935 12%, transparent);
+        font-size: 0.78rem; color: var(--clc-text);
+      }
+      .confirm-l { flex: 1 1 160px; line-height: 1.3; }
+      .confirm-btn {
+        font-family: inherit; font-size: 0.76rem; cursor: pointer; padding: 4px 10px;
+        border-radius: 12px; border: 1px solid var(--clc-divider);
+        background: transparent; color: var(--clc-text);
+      }
+      .confirm-btn.ok { background: #e53935; border-color: #e53935; color: #fff; }
+      .settings-body.locked input, .settings-body.locked select,
+      .settings-body.locked .sw-track { cursor: not-allowed; }
+
       @media (max-width: 460px) {
         .unit { grid-template-columns: 16px 1fr auto 20px; }
         .u-move { grid-column: -2 / -1; }
@@ -868,97 +1120,192 @@ class ClimSolaireCard extends HTMLElement {
 // ---------- Éditeur visuel ----------
 
 const EDITOR_LABELS = {
-  enabled: 'Automatisation', season: 'Mode saison', target_cool: 'Cible froid',
+  enabled: 'Automatisation (interrupteur)', season: 'Mode saison', target_cool: 'Cible froid',
   target_heat: 'Cible chaud', surplus_trigger: 'Seuil par unité',
 };
 
+const CONTROL_DOMAINS = {
+  toggle: ['input_boolean', 'switch'],
+  select: ['input_select', 'select'],
+  slider: ['input_number', 'number'],
+};
+
+// Même mécanique que l'éditeur de la carte cumulus : ha-form natif, sélecteurs
+// d'entités filtrés par domaine, valeurs par défaut absentes du YAML.
 class ClimSolaireCardEditor extends HTMLElement {
   setConfig(config) {
-    this._config = { ...config };
-    this._render();
+    this._config = JSON.parse(JSON.stringify(config || {}));
+    this._ensureBuilt();
+    this._syncForm();
   }
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
+    this._ensureBuilt();
+    if (this._form) {
+      this._form.hass = hass;
+      this._syncForm();
+    }
   }
 
-  _emit(patch) {
-    this._config = { ...this._config, ...patch };
-    const ev = new Event('config-changed', { bubbles: true, composed: true });
-    ev.detail = { config: this._config };
-    this.dispatchEvent(ev);
-  }
-
-  _render() {
-    if (!this._config) return;
+  _ensureBuilt() {
+    if (this._form) return;
+    // hass ET config requis : construit trop tôt, ha-form émet des
+    // value-changed parasites à champs vides qui effaceraient les contrôles.
+    if (!this._hass || !this._config) return;
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
-    const c = this._config;
-    const ctl = c.controls || {};
     this.shadowRoot.innerHTML = `
       <style>
-        .f { display: flex; flex-direction: column; gap: 12px; padding: 8px 0; }
-        label { font-size: 0.82rem; color: var(--secondary-text-color); }
-        input, select {
-          width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.9rem;
-          padding: 6px 8px; border-radius: 6px; color: var(--primary-text-color);
-          border: 1px solid var(--divider-color, rgba(127,127,127,0.3)); background: transparent;
-        }
-        .hint { font-size: 0.72rem; color: var(--secondary-text-color); }
-        fieldset { border: 1px solid var(--divider-color, rgba(127,127,127,0.3)); border-radius: 8px; }
-        legend { font-size: 0.76rem; color: var(--secondary-text-color); }
+        :host { display: block; }
+        ha-form { display: block; }
+        .hint { margin: 0 0 10px 0; font-size: 0.78rem; color: var(--secondary-text-color); line-height: 1.4; }
       </style>
-      <div class="f">
-        <div>
-          <label for="entity">Entité (sensor du flow)</label>
-          <input id="entity" type="text" value="${esc(c.entity || 'sensor.clim_automation')}">
-        </div>
-        <div>
-          <label for="show_settings">Panneau réglages</label>
-          <select id="show_settings">
-            <option value="collapsible"${c.show_settings !== 'expanded' && c.show_settings !== false ? ' selected' : ''}>Repliable</option>
-            <option value="expanded"${c.show_settings === 'expanded' ? ' selected' : ''}>Toujours ouvert</option>
-            <option value="false"${c.show_settings === false ? ' selected' : ''}>Masqué</option>
-          </select>
-        </div>
-        <div>
-          <label for="show_units">Liste des pièces</label>
-          <select id="show_units">
-            <option value="true"${c.show_units !== false ? ' selected' : ''}>Affichée</option>
-            <option value="false"${c.show_units === false ? ' selected' : ''}>Masquée</option>
-          </select>
-        </div>
-        <fieldset>
-          <legend>Helpers (vide = défaut, « false » = ligne masquée)</legend>
-          ${CONTROL_ORDER.map((k) => `
-            <div>
-              <label for="ctl-${k}">${esc(EDITOR_LABELS[k])}</label>
-              <input id="ctl-${k}" data-ctl="${k}" type="text"
-                     placeholder="${esc(DEFAULT_CONTROLS[k].entity)}"
-                     value="${esc(typeof ctl[k] === 'string' ? ctl[k] : ctl[k] === false ? 'false' : '')}">
-            </div>`).join('')}
-        </fieldset>
-      </div>`;
+      <p class="hint">
+        Min, max et pas des sliders lus depuis chaque helper. Champ de contrôle
+        vidé : ligne masquée.
+      </p>`;
+    this._form = document.createElement('ha-form');
+    this._form.addEventListener('value-changed', (e) => this._onFormChanged(e));
+    this._form.computeLabel = (sc) => this._label(sc);
+    this._form.computeHelper = (sc) => this._helper(sc);
+    this.shadowRoot.appendChild(this._form);
+    this._form.hass = this._hass;
+    this._form.schema = this._schema();
+  }
 
-    const $ = (id) => this.shadowRoot.getElementById(id);
-    $('entity').addEventListener('change', (e) => this._emit({ entity: e.target.value.trim() }));
-    $('show_settings').addEventListener('change', (e) => {
-      const v = e.target.value;
-      this._emit({ show_settings: v === 'false' ? false : v });
-    });
-    $('show_units').addEventListener('change', (e) => {
-      this._emit({ show_units: e.target.value === 'true' });
-    });
-    this.shadowRoot.querySelectorAll('[data-ctl]').forEach((el) => {
-      el.addEventListener('change', () => {
-        const controls = { ...(this._config.controls || {}) };
-        const v = el.value.trim();
-        if (!v) delete controls[el.dataset.ctl];
-        else if (v === 'false') controls[el.dataset.ctl] = false;
-        else controls[el.dataset.ctl] = v;
-        this._emit({ controls });
-      });
-    });
+  _schema() {
+    return [
+      { name: 'entity', required: true, selector: { entity: { filter: { domain: 'sensor' } } } },
+      {
+        name: 'show_settings',
+        selector: {
+          select: {
+            mode: 'dropdown',
+            options: [
+              { value: 'collapsible', label: 'Repliable (défaut)' },
+              { value: 'expanded', label: 'Toujours ouvert' },
+              { value: 'hidden', label: 'Masqué' },
+            ],
+          },
+        },
+      },
+      { name: 'show_units', selector: { boolean: {} } },
+      { name: 'lock', selector: { boolean: {} } },
+      {
+        name: 'lock_timeout',
+        selector: { number: { min: 5, max: 600, step: 5, mode: 'box', unit_of_measurement: 's' } },
+      },
+      { name: 'admin_only', selector: { boolean: {} } },
+      {
+        name: 'controls_section',
+        type: 'expandable',
+        title: 'Contrôles',
+        expanded: true,
+        schema: CONTROL_ORDER.map((key) => ({
+          name: `ctrl_${key}`,
+          selector: { entity: { filter: { domain: CONTROL_DOMAINS[DEFAULT_CONTROLS[key].type] } } },
+        })),
+      },
+    ];
+  }
+
+  _label(sc) {
+    const labels = {
+      entity: 'Entité (sensor du flow)',
+      show_settings: 'Panneau réglages',
+      show_units: 'Liste des pièces',
+      lock: 'Verrou des commandes',
+      lock_timeout: 'Reverrouillage après inactivité',
+      admin_only: 'Lecture seule pour les non-administrateurs',
+      controls_section: 'Contrôles',
+    };
+    if (labels[sc.name]) return labels[sc.name];
+    if (sc.name && sc.name.startsWith('ctrl_')) return EDITOR_LABELS[sc.name.slice(5)] || sc.name;
+    return undefined;
+  }
+
+  _helper(sc) {
+    if (sc.name === 'entity') return 'sensor.clim_automation ou équivalent';
+    if (sc.name === 'lock') return 'Bouton « Déverrouiller » requis avant réglage ou réordonnancement';
+    if (sc.name === 'admin_only') return 'Garde-fou d\'interface, les droits réels restent ceux de Home Assistant';
+    if (sc.name && sc.name.startsWith('ctrl_')) {
+      const def = DEFAULT_CONTROLS[sc.name.slice(5)];
+      return def ? `Défaut : ${def.entity}${def.optional ? ' (optionnel)' : ''}, vide pour masquer` : undefined;
+    }
+    return undefined;
+  }
+
+  _configToData(cfg) {
+    const data = {
+      entity: cfg.entity || '',
+      show_settings: cfg.show_settings === false ? 'hidden' : (cfg.show_settings || 'collapsible'),
+      show_units: cfg.show_units !== false,
+      lock: cfg.lock !== false,
+      lock_timeout: cfg.lock_timeout != null ? Number(cfg.lock_timeout) : 30,
+      admin_only: cfg.admin_only === true,
+    };
+    const ctl = cfg.controls || {};
+    for (const key of CONTROL_ORDER) {
+      const u = ctl[key];
+      let id;
+      if (u === false || u === null) id = '';
+      else if (typeof u === 'string') id = u;
+      else if (u && typeof u === 'object' && u.entity) id = u.entity;
+      else id = DEFAULT_CONTROLS[key].entity;
+      data[`ctrl_${key}`] = id;
+    }
+    return data;
+  }
+
+  _dataToConfig(data) {
+    const cfg = { ...this._config };
+    cfg.entity = data.entity || '';
+    if (data.show_settings === 'hidden') cfg.show_settings = false;
+    else if (!data.show_settings || data.show_settings === 'collapsible') delete cfg.show_settings;
+    else cfg.show_settings = data.show_settings;
+    if (data.show_units === false) cfg.show_units = false;
+    else delete cfg.show_units;
+    if (data.lock === false) cfg.lock = false;
+    else delete cfg.lock;
+    const timeout = Number(data.lock_timeout);
+    if (timeout > 0 && timeout !== 30) cfg.lock_timeout = timeout;
+    else delete cfg.lock_timeout;
+    if (data.admin_only === true) cfg.admin_only = true;
+    else delete cfg.admin_only;
+
+    // Contrôles enregistrés tels quels, défaut compris : si un défaut change
+    // dans une version future, un choix explicite n'est pas perdu.
+    const controls = {};
+    for (const key of CONTROL_ORDER) {
+      const id = data[`ctrl_${key}`] || '';
+      const existing = this._config.controls && this._config.controls[key];
+      if (!id) controls[key] = false;
+      else if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+        controls[key] = { ...existing, entity: id };
+      } else controls[key] = id;
+    }
+    cfg.controls = controls;
+    return cfg;
+  }
+
+  _syncForm() {
+    if (!this._form || !this._config) return;
+    const data = this._configToData(this._config);
+    const json = JSON.stringify(data);
+    if (json === this._lastDataJson) return;
+    this._lastDataJson = json;
+    this._form.data = data;
+    this._syncedOnce = true;
+  }
+
+  _onFormChanged(e) {
+    if (!this._syncedOnce) return;
+    const data = e.detail.value;
+    this._lastDataJson = JSON.stringify(data);
+    this._config = this._dataToConfig(data);
+    this.dispatchEvent(new CustomEvent('config-changed', {
+      detail: { config: this._config }, bubbles: true, composed: true,
+    }));
   }
 }
 

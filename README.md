@@ -116,8 +116,8 @@ cumulus l'est pour son propre sensor.
 - **Chemin de décision** (bouton ℹ de la bande budget) : les 6 priorités du
   flow, règles passées ✓, règle décisive →, règles court-circuitées grisées.
 - **Réglages** repliables : automatisation, mode saison, cibles froid et chaud
-  (avec leur cible de stockage en sous-titre), seuil par unité. Envoi différé de
-  250 ms sur les sliders.
+  (avec leur cible de stockage en sous-titre), seuil par unité. Valeur des
+  sliders envoyée au relâché. Couper l'automatisation demande confirmation.
 
 ```yaml
 type: custom:clim-solaire-card
@@ -129,6 +129,9 @@ entity: sensor.clim_automation
 | `entity` | string | **requis** | Sensor produit par le flow clim |
 | `show_units` | bool | `true` | Liste des pièces |
 | `show_settings` | string/bool | `'collapsible'` | `'collapsible'` · `'expanded'` · `false` |
+| `lock` | bool | `true` | Réglages et réordonnancement verrouillés (voir [Verrou des commandes](#verrou-des-commandes)) |
+| `lock_timeout` | number | `30` | Secondes d'inactivité avant reverrouillage |
+| `admin_only` | bool | `false` | Lecture seule pour les utilisateurs non administrateurs |
 | `controls` | object | (voir ci-dessous) | Helpers pilotés, `false` masque une ligne |
 
 | Clé `controls` | Type | Helper par défaut |
@@ -139,8 +142,9 @@ entity: sensor.clim_automation
 | `target_heat` | slider | `input_number.clim_target_heat` |
 | `surplus_trigger` | slider | `input_number.clim_surplus_trigger` (optionnel) |
 
-Éditeur visuel disponible, les helpers optionnels absents masquant simplement
-leur ligne. Exemples dans `dashboard-clim-snippet.yaml`.
+Éditeur visuel disponible (sélecteurs d'entités, champ vidé = ligne masquée),
+les helpers optionnels absents masquant simplement leur ligne. Chaque helper
+accepte aussi l'équivalent non `input_*` : `switch`, `select`, `number`. Exemples dans `dashboard-clim-snippet.yaml`.
 
 > **Ressource Lovelace** : HACS ne télécharge **qu'un seul fichier** par dépôt
 > de plugin, et déclare automatiquement une ressource pointant dessus. Les deux
@@ -626,6 +630,10 @@ forecast_entity: sensor.solcast_pv_forecast_previsions_pour_aujourd_hui
 | `forecast_entity` | string | `sensor.solcast_pv_forecast_previsions_pour_aujourd_hui` | Capteur Solcast pour la courbe du jour, avec attribut `detailedForecast` requis. |
 | `show_settings` | string/bool | `'collapsible'` | `'collapsible'` (défaut, repliable, fermé au départ) · `'expanded'` (toujours ouvert) · `false` (masqué) |
 | `controls` | object | (voir ci-dessous) | Mapping des helpers HA contrôlés par les sliders et le toggle |
+| `hero_switch` | bool | `true` | Interrupteur d'automatisation dans l'en-tête, avec confirmation à chaque bascule |
+| `lock` | bool | `true` | Réglages verrouillés jusqu'au tap sur « Déverrouiller » |
+| `lock_timeout` | number | `30` | Secondes d'inactivité avant reverrouillage |
+| `admin_only` | bool | `false` | Lecture seule pour les utilisateurs non administrateurs |
 
 Champ Solcast affiché (`pv_estimate`, `pv_estimate10`, `pv_estimate90`) aligné sur l'attribut `forecast_field` exposé par le sensor cumulus, sélecteur Solcast maître.
 
@@ -646,7 +654,16 @@ Panneau « Réglages » (icône ⚙ en bas de la carte, repliable) : six contrô
 Chaque slider avec courte description de son **impact réel** sur la décision
 (ex. « Plancher absolu, avec forçage dans la meilleure fenêtre solaire en dessous »).
 
-Lecture automatique de `min`, `max`, `step`, `unit_of_measurement` depuis l'helper HA par les sliders, pas besoin de les redéfinir dans la carte. Envoi des changements à HA après 250 ms de pause (debounce), pour éviter de spammer le bus pendant le déplacement du curseur.
+Lecture automatique de `min`, `max`, `step`, `unit_of_measurement` depuis l'helper HA par les sliders, pas besoin de les redéfinir dans la carte. Valeur envoyée à HA au relâché du curseur uniquement, jamais pendant le glissé.
+
+### Interrupteur d'automatisation
+
+Interrupteur en haut à droite de la carte, relié au contrôle `enabled`
+(`input_boolean.cumulus_automation_enabled` par défaut) : coupure ou reprise
+de l'automatisation sans ouvrir les réglages. Placé hors du
+[verrou](#verrou-des-commandes), il demande confirmation dans les deux sens
+(« Annuler / Couper » ou « Annuler / Activer », annulée d'elle-même après 8 s).
+Masqué avec `hero_switch: false` ou si `controls.enabled` vaut `false`.
 
 Pour pointer un slider sur un helper différent :
 
@@ -668,6 +685,40 @@ Pour un panneau toujours déplié (carte plus grande mais tout visible) :
 
 ```yaml
 show_settings: expanded
+```
+
+### Verrou des commandes
+
+Sur un mur de dashboard ou un téléphone, un défilement qui accroche un slider
+suffisait à changer une cible. Les deux cartes verrouillent donc leurs
+commandes par défaut :
+
+- **Verrouillé** : sliders, interrupteur et sélecteur grisés et inertes,
+  bandeau « Réglages verrouillés » en tête du panneau. Sur la carte clim, le
+  bouton ⇅ de réordonnancement est remplacé par un cadenas.
+- **Déverrouiller** : un tap sur le bouton du bandeau (ou sur le cadenas de la
+  liste des pièces) rend les commandes actives.
+- **Reverrouillage automatique** après `lock_timeout` secondes sans
+  interaction (30 s par défaut). Chaque réglage repousse l'échéance, le verrou
+  ne retombe jamais au milieu d'un ajustement. Replier le panneau ou taper
+  « Verrouiller » reverrouille immédiatement.
+- **Couper l'automatisation** demande toujours confirmation, même déverrouillé.
+- **`admin_only: true`** : pour un utilisateur non administrateur, commandes en
+  lecture seule, sans bouton de déverrouillage. Garde-fou d'interface
+  seulement : un utilisateur HA peut toujours appeler les services par
+  d'autres moyens, les droits réels restent ceux de Home Assistant.
+
+```yaml
+type: custom:cumulus-solaire-card
+entity: sensor.cumulus_automation
+lock_timeout: 60     # reverrouillage après 1 min d'inactivité
+admin_only: true     # famille en lecture seule
+```
+
+Pour retrouver le comportement précédent (commandes toujours actives) :
+
+```yaml
+lock: false
 ```
 
 ## Comportement des couleurs

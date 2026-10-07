@@ -9,12 +9,12 @@
  *   2. Cadran 270° température eau
  *   3. Courbe Solcast du jour avec fenêtre optimale + curseur "now"
  *   4. Pastilles : production / surplus / legionella / solaire amont
- *   5. Réglages (sliders + toggle, repliable)
+ *   5. Réglages (sliders + toggle, repliable, verrouillés par défaut)
  *
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.11.4';
+const VERSION = '1.12.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -90,6 +90,10 @@ class CumulusSolaireCard extends HTMLElement {
     this._config = {
       forecast_entity: 'sensor.solcast_pv_forecast_previsions_pour_aujourd_hui',
       show_settings: 'collapsible',  // 'collapsible' | 'expanded' | false
+      hero_switch: true,             // interrupteur d'automatisation dans l'en-tête
+      lock: true,                    // réglages verrouillés jusqu'à déverrouillage
+      lock_timeout: 30,              // s d'inactivité avant reverrouillage
+      admin_only: false,             // lecture seule pour les non-administrateurs
       ...config,
       controls,
     };
@@ -110,6 +114,9 @@ class CumulusSolaireCard extends HTMLElement {
       clearInterval(this._tick);
       this._tick = null;
     }
+    clearTimeout(this._lockTimer);
+    this._cancelConfirm();
+    this._unlocked = false;
   }
 
   getCardSize() {
@@ -132,7 +139,12 @@ class CumulusSolaireCard extends HTMLElement {
             <div class="hero-title" id="heroTitle">—</div>
             <div class="hero-reason" id="heroReason">—</div>
           </div>
+          <label class="switch hero-switch" id="heroSwitchWrap" title="Automatisation">
+            <input type="checkbox" id="heroSwitch" aria-label="Automatisation">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
         </div>
+        <div class="hero-confirm" id="heroConfirm"></div>
 
         <div class="strategy" id="strategy">
           <div class="strategy-why" id="strategyWhy">
@@ -228,6 +240,9 @@ class CumulusSolaireCard extends HTMLElement {
       heroIconEl:   this.shadowRoot.querySelector('#heroIconEl'),
       heroTitle:    this.shadowRoot.querySelector('#heroTitle'),
       heroReason:   this.shadowRoot.querySelector('#heroReason'),
+      heroSwitch:   this.shadowRoot.querySelector('#heroSwitch'),
+      heroSwitchWrap: this.shadowRoot.querySelector('#heroSwitchWrap'),
+      heroConfirm:  this.shadowRoot.querySelector('#heroConfirm'),
       dialBg:       this.shadowRoot.querySelector('#dialBg'),
       dialFill:     this.shadowRoot.querySelector('#dialFill'),
       dialTicks:    this.shadowRoot.querySelector('#dialTicks'),
@@ -271,6 +286,24 @@ class CumulusSolaireCard extends HTMLElement {
       });
     });
 
+    // Interrupteur d'automatisation de l'en-tête. Hors du verrou des réglages,
+    // il est donc gardé par une confirmation, dans les deux sens.
+    this._el.heroSwitchWrap.addEventListener('click', (e) => e.stopPropagation());
+    this._el.heroConfirm.addEventListener('click', (e) => e.stopPropagation());
+    this._el.heroSwitch.addEventListener('change', () => {
+      const sw = this._el.heroSwitch;
+      const ctrl = this._config.controls.enabled;
+      const so = ctrl && this._hass.states[ctrl.entity];
+      const isOn = !!so && so.state === 'on';
+      sw.checked = isOn;   // l'interrupteur ne bouge qu'une fois confirmé
+      if (!ctrl || !so || this._readOnly()) return;
+      this._confirm(this._el.heroConfirm,
+        isOn ? 'Couper l\'automatisation ? Le cumulus ne sera plus piloté.'
+             : 'Réactiver l\'automatisation du cumulus ?',
+        isOn ? 'Couper' : 'Activer',
+        () => this._setToggle(ctrl.entity, !isOn));
+    });
+
     // Strategy strip: info toggles detail, clicks inside strip don't bubble to more-info
     this._strategyExpanded = false;
     this._el.strategy.addEventListener('click', (e) => e.stopPropagation());
@@ -297,6 +330,7 @@ class CumulusSolaireCard extends HTMLElement {
       this._el.settingsToggle.addEventListener('click', () => {
         const isOpen = this._el.settingsContent.classList.toggle('expanded');
         this._el.settingsToggle.classList.toggle('expanded', isOpen);
+        if (!isOpen && this._unlocked) this._relock();
       });
     }
 
@@ -311,6 +345,17 @@ class CumulusSolaireCard extends HTMLElement {
     container.innerHTML = '';
     this._sliders = {};
     this._toggles = {};
+
+    // Bandeau de verrou, contenu mis à jour par _applyLock()
+    this._lockRow = document.createElement('div');
+    this._lockRow.className = 'lock-row';
+    container.appendChild(this._lockRow);
+    this._lockRow.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-lock]');
+      if (!btn) return;
+      if (btn.dataset.lock === 'unlock') this._unlock();
+      else this._relock();
+    });
 
     for (const key of CONTROL_ORDER) {
       const ctrl = this._config.controls[key];
@@ -363,14 +408,21 @@ class CumulusSolaireCard extends HTMLElement {
         slider.addEventListener('pointercancel', stopDrag);
         slider.addEventListener('pointerleave',  stopDrag);
 
+        // Glissé : affichage seul. Envoi au relâché uniquement, une valeur
+        // intermédiaire (curseur tenu immobile) ne part jamais vers HA.
         slider.addEventListener('input', () => {
+          if (this._locked()) return;
+          this._armRelock();
           this._updateSliderFill(slider);
           valEl.textContent = this._formatSliderValue(slider, ctrl);
-          // Debounced service call
-          clearTimeout(slider._timer);
-          slider._timer = setTimeout(() => {
-            this._onSliderChange(ctrl, Number(slider.value));
-          }, 250);
+        });
+        slider.addEventListener('change', () => {
+          slider._dragging = false;
+          if (this._locked()) return;
+          this._armRelock();
+          slider._sent = Number(slider.value);
+          slider._sentUntil = Date.now() + 5000;
+          this._onSliderChange(ctrl, slider._sent);
         });
 
         this._sliders[key] = { slider, valEl, subEl, ctrl };
@@ -409,6 +461,7 @@ class CumulusSolaireCard extends HTMLElement {
     }
     this._el.heroReason.textContent = reason;
 
+    this._renderHeroSwitch();
     this._renderStrategy(a);
     this._renderDial(a);
     this._renderForecast(a);
@@ -1091,6 +1144,7 @@ class CumulusSolaireCard extends HTMLElement {
 
   _renderSettings(autoAttrs) {
     if (this._config.show_settings === false) return;
+    this._applyLock();
 
     // Sliders
     for (const [key, info] of Object.entries(this._sliders || {})) {
@@ -1115,7 +1169,12 @@ class CumulusSolaireCard extends HTMLElement {
       if (!isNaN(maxA))  info.slider.max  = maxA;
       if (!isNaN(stepA)) info.slider.step = stepA;
 
-      if (!info.slider._dragging && !isNaN(val)) {
+      // Valeur envoyée en attente de retour de HA : gardée affichée plutôt que
+      // de revenir un instant sur l'ancienne.
+      const sl = info.slider;
+      const held = sl._sent != null && Date.now() < sl._sentUntil && sl._sent !== val;
+      if (!held) sl._sent = null;
+      if (!sl._dragging && !held && !isNaN(val)) {
         info.slider.value = val;
         this._updateSliderFill(info.slider);
         info.valEl.textContent = this._formatSliderValue(info.slider, info.ctrl, val, so);
@@ -1164,8 +1223,81 @@ class CumulusSolaireCard extends HTMLElement {
     return `${v.toFixed(digits)}${unit ? ' ' + unit : ''}`;
   }
 
+  // ---------- Verrou ----------
+
+  // Lecture seule imposée : option admin_only et utilisateur non administrateur.
+  // Garde-fou d'interface uniquement, les droits réels restent ceux de HA.
+  _readOnly() {
+    const u = this._hass && this._hass.user;
+    return !!(this._config.admin_only && u && !u.is_admin);
+  }
+
+  _locked() {
+    if (this._readOnly()) return true;
+    return this._config.lock !== false && !this._unlocked;
+  }
+
+  _lockTimeoutMs() {
+    const s = Number(this._config.lock_timeout);
+    return (isFinite(s) && s > 0 ? s : 30) * 1000;
+  }
+
+  _unlock() {
+    if (this._readOnly()) return;
+    this._unlocked = true;
+    this._armRelock();
+    this._applyLock();
+  }
+
+  _relock() {
+    clearTimeout(this._lockTimer);
+    // La confirmation des réglages tombe avec le verrou, pas celle de l'en-tête
+    if (this._confirmBar && this._confirmBar.closest('.settings-content')) this._cancelConfirm();
+    this._unlocked = false;
+    this._applyLock();
+  }
+
+  // Chaque interaction repousse le reverrouillage : il ne survient qu'après
+  // une vraie période d'inactivité, jamais au milieu d'un réglage.
+  _armRelock() {
+    if (this._config.lock === false) return;
+    clearTimeout(this._lockTimer);
+    this._lockTimer = setTimeout(() => this._relock(), this._lockTimeoutMs());
+  }
+
+  _applyLock() {
+    if (!this._lockRow) return;
+    const locked = this._locked();
+    const readOnly = this._readOnly();
+    for (const info of Object.values(this._sliders || {})) {
+      info.slider.disabled = locked;
+      if (locked) info.slider._dragging = false;
+    }
+    for (const info of Object.values(this._toggles || {})) info.input.disabled = locked;
+    this._el.settingsContent.classList.toggle('locked', locked);
+
+    const state = readOnly ? 'ro' : this._config.lock === false ? 'off' : locked ? 'locked' : 'open';
+    if (state === this._lockState) return;
+    this._lockState = state;
+    this._lockRow.style.display = state === 'off' ? 'none' : '';
+    this._lockRow.classList.toggle('open', state === 'open');
+    if (state === 'ro') {
+      this._lockRow.innerHTML = `<ha-icon icon="mdi:lock-outline"></ha-icon>
+        <span class="lock-l">Lecture seule, réglages réservés aux administrateurs</span>`;
+    } else if (state === 'locked') {
+      this._lockRow.innerHTML = `<ha-icon icon="mdi:lock-outline"></ha-icon>
+        <span class="lock-l">Réglages verrouillés</span>
+        <button class="lock-btn" data-lock="unlock">Déverrouiller</button>`;
+    } else if (state === 'open') {
+      this._lockRow.innerHTML = `<ha-icon icon="mdi:lock-open-variant-outline"></ha-icon>
+        <span class="lock-l">Déverrouillé, reverrouillage après
+          ${Math.round(this._lockTimeoutMs() / 1000)} s d'inactivité</span>
+        <button class="lock-btn" data-lock="lock">Verrouiller</button>`;
+    }
+  }
+
   _onSliderChange(ctrl, value) {
-    if (!this._hass) return;
+    if (!this._hass || this._locked()) return;
     const domain = ctrl.entity.split('.')[0];
     if (domain !== 'input_number' && domain !== 'number') return;
     this._hass.callService(domain, 'set_value', {
@@ -1176,16 +1308,66 @@ class CumulusSolaireCard extends HTMLElement {
 
   _onToggleChange(ctrl, checked) {
     if (!this._hass) return;
-    const domain = ctrl.entity.split('.')[0];
-    if (domain === 'input_boolean') {
-      this._hass.callService('input_boolean', checked ? 'turn_on' : 'turn_off', {
-        entity_id: ctrl.entity,
-      });
-    } else if (domain === 'switch') {
-      this._hass.callService('switch', checked ? 'turn_on' : 'turn_off', {
-        entity_id: ctrl.entity,
-      });
+    if (this._locked()) {
+      // Bascule refusée : l'interrupteur revient sur l'état réel
+      const so = this._hass.states[ctrl.entity];
+      for (const info of Object.values(this._toggles || {})) {
+        if (info.ctrl === ctrl) info.input.checked = so ? so.state === 'on' : !checked;
+      }
+      return;
     }
+    this._armRelock();
+    if (checked) { this._setToggle(ctrl.entity, true); return; }
+    // Couper l'automatisation : confirmation, l'interrupteur reste allumé d'ici là
+    const info = Object.values(this._toggles || {}).find((t) => t.ctrl === ctrl);
+    if (info) info.input.checked = true;
+    this._confirm(info && info.input.closest('.setting-row'),
+      'Couper l\'automatisation ? Le cumulus ne sera plus piloté.', 'Couper',
+      () => this._setToggle(ctrl.entity, false));
+  }
+
+  _setToggle(entityId, on) {
+    const domain = entityId.split('.')[0];
+    const svc = domain === 'input_boolean' || domain === 'switch' ? domain : 'homeassistant';
+    this._hass.callService(svc, on ? 'turn_on' : 'turn_off', { entity_id: entityId });
+  }
+
+  _renderHeroSwitch() {
+    const ctrl = this._config.controls.enabled;
+    const so = ctrl && this._hass.states[ctrl.entity];
+    const show = this._config.hero_switch !== false && !!so;
+    this._el.heroSwitchWrap.style.display = show ? '' : 'none';
+    this._el.hero.classList.toggle('with-switch', show);
+    if (!show) return;
+    this._el.heroSwitch.checked = so.state === 'on';
+    this._el.heroSwitch.disabled = this._readOnly();
+  }
+
+  // Barre de confirmation dans l'élément donné, annulée d'elle-même après 8 s
+  _confirm(anchor, text, okLabel, onOk) {
+    this._cancelConfirm();
+    if (!anchor) return;
+    const bar = document.createElement('div');
+    bar.className = 'confirm';
+    bar.innerHTML = `<span class="confirm-l">${this._escape(text)}</span>
+      <button class="confirm-btn" data-c="no">Annuler</button>
+      <button class="confirm-btn ok" data-c="yes">${this._escape(okLabel)}</button>`;
+    bar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const b = e.target.closest('[data-c]');
+      if (!b) return;
+      this._cancelConfirm();
+      if (b.dataset.c === 'yes' && !this._readOnly()) onOk();
+    });
+    anchor.appendChild(bar);
+    this._confirmBar = bar;
+    this._confirmTimer = setTimeout(() => this._cancelConfirm(), 8000);
+  }
+
+  _cancelConfirm() {
+    clearTimeout(this._confirmTimer);
+    if (this._confirmBar) this._confirmBar.remove();
+    this._confirmBar = null;
   }
 
   _escape(s) {
@@ -1265,6 +1447,37 @@ class CumulusSolaireCard extends HTMLElement {
         50%      { transform: scale(1.06); }
       }
       .hero-text { min-width: 0; }
+      .hero.with-switch { grid-template-columns: 56px 1fr auto; }
+      .hero-switch input:disabled ~ .switch-track { opacity: 0.5; cursor: not-allowed; }
+      .hero-confirm { padding: 0 18px; }
+      .hero-confirm .confirm { margin: 4px 0 6px 0; }
+
+      /* Confirmation */
+      .toggle-row { flex-wrap: wrap; }
+      .confirm {
+        flex-basis: 100%;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px 8px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: color-mix(in srgb, #e53935 12%, transparent);
+        font-size: 0.78rem;
+        color: var(--csc-text);
+      }
+      .confirm-l { flex: 1 1 160px; line-height: 1.3; }
+      .confirm-btn {
+        font-family: inherit;
+        font-size: 0.76rem;
+        cursor: pointer;
+        padding: 4px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--csc-divider);
+        background: transparent;
+        color: var(--csc-text);
+      }
+      .confirm-btn.ok { background: #e53935; border-color: #e53935; color: #fff; }
       .hero-title {
         font-size: 1.05rem;
         font-weight: 600;
@@ -1725,6 +1938,35 @@ class CumulusSolaireCard extends HTMLElement {
       .switch input:checked ~ .switch-track .switch-thumb {
         transform: translateX(20px);
       }
+
+      /* Verrou */
+      .lock-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 0 4px 0;
+        font-size: 0.78rem;
+        color: var(--csc-text-2);
+      }
+      .lock-row ha-icon { --mdc-icon-size: 17px; flex: none; }
+      .lock-row.open ha-icon { color: var(--csc-accent); }
+      .lock-l { flex: 1; min-width: 0; line-height: 1.3; }
+      .lock-btn {
+        flex: none;
+        font-family: inherit;
+        font-size: 0.76rem;
+        cursor: pointer;
+        padding: 4px 10px;
+        border-radius: 12px;
+        color: var(--csc-text);
+        border: 1px solid var(--csc-divider);
+        background: transparent;
+      }
+      .lock-row:not(.open) .lock-btn { border-color: var(--csc-accent); color: var(--csc-accent); }
+      .settings-content.locked .setting-row:not(.missing) { opacity: 0.55; }
+      .settings-content.locked .slider,
+      .settings-content.locked .slider::-webkit-slider-thumb,
+      .settings-content.locked .switch-track { cursor: not-allowed; }
     `;
   }
 }
@@ -1822,6 +2064,13 @@ class CumulusSolaireCardEditor extends HTMLElement {
           },
         },
       },
+      { name: 'hero_switch', selector: { boolean: {} } },
+      { name: 'lock', selector: { boolean: {} } },
+      {
+        name: 'lock_timeout',
+        selector: { number: { min: 5, max: 600, step: 5, mode: 'box', unit_of_measurement: 's' } },
+      },
+      { name: 'admin_only', selector: { boolean: {} } },
       {
         name: 'controls_section',
         type: 'expandable',
@@ -1838,6 +2087,10 @@ class CumulusSolaireCardEditor extends HTMLElement {
       forecast_entity:          'Entité prévisions Solcast du jour',
       forecast_entity_tomorrow: 'Entité prévisions Solcast de demain',
       show_settings:            'Panneau de réglages',
+      hero_switch:              'Interrupteur d\'automatisation dans l\'en-tête',
+      lock:                     'Verrou des réglages',
+      lock_timeout:             'Reverrouillage après inactivité',
+      admin_only:               'Lecture seule pour les non-administrateurs',
       controls_section:         'Contrôles',
     };
     if (labels[schema.name]) return labels[schema.name];
@@ -1851,6 +2104,9 @@ class CumulusSolaireCardEditor extends HTMLElement {
     if (schema.name === 'entity') return 'sensor.cumulus_automation ou équivalent';
     if (schema.name === 'forecast_entity') return 'Prévisions Solcast pour aujourd\'hui';
     if (schema.name === 'forecast_entity_tomorrow') return 'Optionnel, pour la courbe de demain';
+    if (schema.name === 'hero_switch') return 'Confirmation demandée à chaque bascule';
+    if (schema.name === 'lock') return 'Bouton « Déverrouiller » requis avant tout réglage';
+    if (schema.name === 'admin_only') return 'Garde-fou d\'interface, les droits réels restent ceux de Home Assistant';
     if (schema.name && schema.name.startsWith('ctrl_')) {
       const def = DEFAULT_CONTROLS[schema.name.slice(5)];
       return def ? `Défaut : ${def.entity}, vide pour masquer` : undefined;
@@ -1866,6 +2122,10 @@ class CumulusSolaireCardEditor extends HTMLElement {
       show_settings: cfg.show_settings === false
         ? 'hidden'
         : (cfg.show_settings || 'collapsible'),
+      hero_switch: cfg.hero_switch !== false,
+      lock: cfg.lock !== false,
+      lock_timeout: cfg.lock_timeout != null ? Number(cfg.lock_timeout) : 30,
+      admin_only: cfg.admin_only === true,
     };
     const userControls = cfg.controls || {};
     for (const key of CONTROL_ORDER) {
@@ -1895,6 +2155,17 @@ class CumulusSolaireCardEditor extends HTMLElement {
     } else {
       cfg.show_settings = data.show_settings;
     }
+
+    // Valeurs par défaut retirées de la config plutôt qu'écrites en clair
+    if (data.hero_switch === false) cfg.hero_switch = false;
+    else delete cfg.hero_switch;
+    if (data.lock === false) cfg.lock = false;
+    else delete cfg.lock;
+    const timeout = Number(data.lock_timeout);
+    if (timeout > 0 && timeout !== 30) cfg.lock_timeout = timeout;
+    else delete cfg.lock_timeout;
+    if (data.admin_only === true) cfg.admin_only = true;
+    else delete cfg.admin_only;
 
     // Save controls verbatim. Don't silently drop entries that match the
     // current defaults — if defaults change in a future version, a user who
@@ -1963,5 +2234,5 @@ window.customCards.push({
   name: 'Cumulus Solaire',
   description: "Carte tableau de bord pour l'automatisation cumulus solaire (Node-RED v5)",
   preview: false,
-  documentationURL: 'https://github.com/USER/cumulus-solaire-card',
+  documentationURL: 'https://github.com/LightD31/hacs-water',
 });

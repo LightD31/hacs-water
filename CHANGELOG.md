@@ -2,6 +2,48 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v1.21.0] - 2026-10-07
+
+- **Verrou des commandes sur les deux cartes.** Un défilement qui accrochait un
+  slider suffisait à changer une cible. Réglages et réordonnancement des pièces
+  sont désormais verrouillés par défaut : bouton « Déverrouiller », puis
+  reverrouillage après 30 s sans interaction (`lock_timeout`), chaque réglage
+  repoussant l'échéance. Replier le panneau reverrouille aussitôt. `lock: false`
+  rétablit le comportement précédent.
+- **`admin_only`** : lecture seule pour les utilisateurs non administrateurs,
+  sans bouton de déverrouillage. Garde-fou d'interface uniquement.
+- Les appels de service sont aussi refusés côté code tant que la carte est
+  verrouillée, pas seulement par l'attribut `disabled` des contrôles.
+- **Couper l'automatisation demande confirmation**, sur les deux cartes : barre
+  « Annuler / Couper », annulée d'elle-même après 8 s. La réactivation depuis
+  le panneau réglages reste directe.
+- **Carte cumulus : interrupteur d'automatisation dans l'en-tête**
+  (`hero_switch`, actif par défaut), sans ouvrir les réglages. Placé hors du
+  verrou, il demande confirmation dans les deux sens. Lecture seule avec
+  `admin_only`.
+- **Sliders : envoi au relâché uniquement.** La carte cumulus envoyait une
+  valeur dès 250 ms d'immobilité, curseur encore tenu. Sur les deux cartes, la
+  valeur envoyée reste affichée jusqu'au retour de HA, sans retour visuel sur
+  l'ancienne.
+- **Carte clim, rendu** :
+  - redessinée seulement quand l'une de ses entités change, et non à chaque
+    changement d'état de n'importe quelle entité de HA ;
+  - panneau réglages mis à jour en place, reconstruit uniquement si sa
+    structure change : un curseur tenu ne revient plus en arrière à chaque
+    republication du sensor.
+- **Carte clim, services** :
+  - `turn_on` / `turn_off` explicites au lieu de `toggle`, sans inversion si
+    l'état a changé entre-temps ;
+  - domaines `switch`, `select` et `number` acceptés en plus des helpers
+    `input_*`.
+- **Éditeur visuel clim** sur `ha-form`, avec sélecteurs d'entités filtrés par
+  domaine, comme celui de la carte cumulus. Champ de contrôle vidé : ligne
+  masquée.
+- `documentationURL` de la carte cumulus pointé sur ce dépôt.
+- Versions : `cumulus-solaire-card` 1.12.0, `clim-solaire-card` 1.1.0.
+- Fichiers modifiés : `cumulus-solaire-card.js`, `clim-solaire-card.js`,
+  `hacs-water.js` (régénéré), `README.md`, `CHANGELOG.md`.
+
 ## [v1.20.1] - 2026-07-31
 
 - **Entités renommées côté Home Assistant** répercutées dans les flows, la
