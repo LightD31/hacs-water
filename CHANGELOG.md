@@ -14,7 +14,32 @@ Modifications notables de ce dépôt, listées ci-dessous.
   sans bouton de déverrouillage. Garde-fou d'interface uniquement.
 - Les appels de service sont aussi refusés côté code tant que la carte est
   verrouillée, pas seulement par l'attribut `disabled` des contrôles.
-- Options exposées dans les deux éditeurs visuels.
+- **Couper l'automatisation demande confirmation**, sur les deux cartes : barre
+  « Annuler / Couper », annulée d'elle-même après 8 s. La réactivation depuis
+  le panneau réglages reste directe.
+- **Carte cumulus : interrupteur d'automatisation dans l'en-tête**
+  (`hero_switch`, actif par défaut), sans ouvrir les réglages. Placé hors du
+  verrou, il demande confirmation dans les deux sens. Lecture seule avec
+  `admin_only`.
+- **Sliders : envoi au relâché uniquement.** La carte cumulus envoyait une
+  valeur dès 250 ms d'immobilité, curseur encore tenu. Sur les deux cartes, la
+  valeur envoyée reste affichée jusqu'au retour de HA, sans retour visuel sur
+  l'ancienne.
+- **Carte clim, rendu** :
+  - redessinée seulement quand l'une de ses entités change, et non à chaque
+    changement d'état de n'importe quelle entité de HA ;
+  - panneau réglages mis à jour en place, reconstruit uniquement si sa
+    structure change : un curseur tenu ne revient plus en arrière à chaque
+    republication du sensor.
+- **Carte clim, services** :
+  - `turn_on` / `turn_off` explicites au lieu de `toggle`, sans inversion si
+    l'état a changé entre-temps ;
+  - domaines `switch`, `select` et `number` acceptés en plus des helpers
+    `input_*`.
+- **Éditeur visuel clim** sur `ha-form`, avec sélecteurs d'entités filtrés par
+  domaine, comme celui de la carte cumulus. Champ de contrôle vidé : ligne
+  masquée.
+- `documentationURL` de la carte cumulus pointé sur ce dépôt.
 - Versions : `cumulus-solaire-card` 1.12.0, `clim-solaire-card` 1.1.0.
 - Fichiers modifiés : `cumulus-solaire-card.js`, `clim-solaire-card.js`,
   `hacs-water.js` (régénéré), `README.md`, `CHANGELOG.md`.
