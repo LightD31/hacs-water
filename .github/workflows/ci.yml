@@ -17,10 +17,21 @@ jobs:
         with:
           node-version: '20'
 
-      # Simulation du flow clim : exécute les corps réels des nœuds function
-      # sur une horloge accélérée et un registre d'états HA factice.
+      # Les flows livrés sont générés depuis nodered/ : ils ne doivent pas dériver.
+      - name: Flows Node-RED à jour avec leurs sources
+        run: node tools/build-flows.js --check
+
+      # Simulations : exécutent les corps réels des nœuds function sur une
+      # horloge accélérée, un registre d'états HA factice et un modèle physique
+      # (ballon, unités inverter, compteur réseau bouclé).
+      - name: Simulation du flow cumulus
+        run: node tests/cumulus-flow-sim.js
+
       - name: Simulation du flow climatisation
         run: node tests/clim-flow-sim.js
+
+      - name: Simulation couplée des deux flows
+        run: node tests/coupled-flows-sim.js
 
       # Invariants du dépôt : manifeste HACS, intégrité des deux graphes,
       # absence de collision d'identifiants entre eux, cartes enregistrées,

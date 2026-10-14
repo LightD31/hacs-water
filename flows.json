@@ -2,19 +2,64 @@
     {
         "id": "ea320b91f27070db",
         "type": "tab",
-        "label": "Cumulus Solaire V3",
+        "label": "Cumulus Solaire",
         "disabled": false,
-        "info": "",
+        "info": "# Cumulus solaire — planification au surplus\n\nContrat Base, export non rémunéré : le bon moment pour chauffer est celui où\nle surplus attendu est le plus grand. Chaque besoin (minimum garanti, cible,\nanti-légionelle) est réparti sur les meilleurs créneaux Solcast avant son\néchéance ; le surplus du dernier créneau retenu devient le seuil de chauffe.\n\nAppris en continu : consommation de fond heure par heure, biais Solcast,\nrefroidissement du ballon, rendement de chauffe.\n\nSources : nodered/cumulus/ du dépôt hacs-water, flows.json généré.",
         "env": [
             {
                 "name": "CUMULUS_LOAD_W",
                 "value": "1200",
                 "type": "num"
+            },
+            {
+                "name": "CUMULUS_SWITCH",
+                "value": "switch.chauffe_eau_electrique",
+                "type": "str"
+            },
+            {
+                "name": "CUMULUS_POWER",
+                "value": "sensor.chauffe_eau_electrique_power",
+                "type": "str"
+            },
+            {
+                "name": "WATER_TEMP_SENSOR",
+                "value": "sensor.temp_chauffe_eau_electrique_temperature",
+                "type": "str"
+            },
+            {
+                "name": "SOLAR_TANK_SENSOR",
+                "value": "sensor.temp_chauffe_eau_solaire_temperature",
+                "type": "str"
+            },
+            {
+                "name": "SOLAR_SUFFICIENT_MARGIN",
+                "value": "3",
+                "type": "num"
+            },
+            {
+                "name": "SOLAR_SENSOR",
+                "value": "sensor.pince_amperemetrique_power_a",
+                "type": "str"
+            },
+            {
+                "name": "GRID_SENSOR",
+                "value": "sensor.pince_amperemetrique_power_b",
+                "type": "str"
+            },
+            {
+                "name": "HOUSE_SENSOR",
+                "value": "sensor.pince_amperemetrique_power_ab",
+                "type": "str"
+            },
+            {
+                "name": "CLIM_SENSOR",
+                "value": "sensor.clim_automation",
+                "type": "str"
             }
         ]
     },
     {
-        "id": "2ec35c29508aabc8",
+        "id": "c4a0000000000a01",
         "type": "group",
         "z": "ea320b91f27070db",
         "name": "📡 Triggers",
@@ -24,78 +69,43 @@
             "color": "#1f4e79"
         },
         "nodes": [
-            "7431f8d4c76e0dcd",
-            "1fb25d7691c83970",
-            "48899a033646ed45",
-            "ce2b54e9d9d68923",
-            "c99a9073a88f1e13",
-            "cafe5011a1c00003"
+            "c4a0000000000001",
+            "c4a0000000000002",
+            "c4a0000000000003",
+            "c4a0000000000004",
+            "c4a0000000000005",
+            "c4a0000000000006",
+            "c4a0000000000007"
         ],
-        "x": 24,
-        "y": 199,
-        "w": 232,
-        "h": 382
+        "x": 40,
+        "y": 120,
+        "w": 240,
+        "h": 440
     },
     {
-        "id": "6ba7c2472dd58523",
+        "id": "c4a0000000000a02",
         "type": "group",
         "z": "ea320b91f27070db",
-        "name": "🔍 Lecture & Calculs",
+        "name": "🔍 Lecture, apprentissage & plan",
         "style": {
             "label": true,
             "fill": "#fff8e1",
             "color": "#7f4f00"
         },
         "nodes": [
-            "2b6d41d3668062eb",
-            "2e8e45959ba2534d",
-            "59dc9b8034d64b8b",
-            "fd27b92c88b6873b",
-            "023d7e28f730d219"
+            "c4a0000000000011",
+            "c4a0000000000012",
+            "c4a0000000000013",
+            "c4a0000000000014",
+            "c4a0000000000015"
         ],
-        "x": 304,
-        "y": 319,
-        "w": 1242,
-        "h": 82
+        "x": 500,
+        "y": 300,
+        "w": 980,
+        "h": 80
     },
     {
-        "id": "e9a411a49fd0919e",
-        "type": "group",
-        "z": "ea320b91f27070db",
-        "name": "🌳 Arbre de décision",
-        "style": {
-            "label": true,
-            "fill": "#e8f5e9",
-            "color": "#1b5e20"
-        },
-        "nodes": [
-            "6be7eedccedfce7d",
-            "fbd43936445640e1",
-            "572e1c67d0ebea07",
-            "4ece99d06ae8096d",
-            "4f1825047db975d8",
-            "d60e77f2c3cd66bf",
-            "bf145909a32e1522",
-            "e30ae7154386acdf",
-            "5c08659fc51ff9ce",
-            "a44c672c958c7642",
-            "76bff10f9d7cc756",
-            "75b2309546e3dd64",
-            "1ffee7d7dada97bb",
-            "056b10718da93598",
-            "19251ed15f6c7530",
-            "6e1996270f8c92c0",
-            "72c271352874d840",
-            "cafe5011a1c00001",
-            "cafe5011a1c00002"
-        ],
-        "x": 1554,
-        "y": 199,
-        "w": 582,
-        "h": 802
-    },
-    {
-        "id": "2cb0a37db48d957c",
+        "id": "c4a0000000000a03",
         "type": "group",
         "z": "ea320b91f27070db",
         "name": "🎯 Action & Sensor",
@@ -105,68 +115,58 @@
             "color": "#880e4f"
         },
         "nodes": [
-            "88065b2e801467ff",
-            "e72ce14c83d11adb",
-            "a2dfa65aafe469d5",
-            "63fce8150e11457c",
-            "a466bfe5d1cf4d8d",
-            "dd497c0a9ff7b897",
-            "304a9c27436f037a",
-            "83bbdbc20c39fdbc",
-            "258511b9e9b982e8",
-            "74b1aa94ef125cdc"
+            "c4a0000000000020",
+            "c4a0000000000021",
+            "c4a0000000000022",
+            "c4a0000000000023",
+            "c4a0000000000030",
+            "c4a0000000000031",
+            "c4a0000000000040",
+            "c4a0000000000041"
         ],
-        "x": 2164,
-        "y": 259,
-        "w": 872,
-        "h": 422
+        "x": 1470,
+        "y": 160,
+        "w": 500,
+        "h": 360
     },
     {
-        "id": "c5eb9f2231670e4c",
+        "id": "c4a0000000000060",
         "type": "comment",
         "z": "ea320b91f27070db",
         "name": "📡 Déclencheurs",
-        "info": "Réévaluation complète à chaque événement.",
         "x": 140,
-        "y": 180,
+        "y": 80,
+        "info": "Réévaluation complète à chaque événement, et chaque minute.",
         "wires": []
     },
     {
-        "id": "b690d16b727d62f8",
+        "id": "c4a0000000000061",
         "type": "comment",
         "z": "ea320b91f27070db",
-        "name": "🔍 Lecture & Calculs (pipeline)",
-        "info": "5 étapes atomiques avant l'arbre de décision.",
-        "x": 460,
-        "y": 180,
+        "name": "🔍 Lecture → apprentissage → plan → décision",
+        "x": 760,
+        "y": 80,
+        "info": "Toute la décision vit dans les nœuds function, rejoués tels quels par tests/cumulus-flow-sim.js.",
         "wires": []
     },
     {
-        "id": "c7e03b055a50b538",
-        "type": "comment",
-        "z": "ea320b91f27070db",
-        "name": "🌳 Arbre de décision (priorité ↓)",
-        "info": "Une priorité par switch. Sortie 1, continuation. Sortie 2, action terminale.",
-        "x": 1720,
-        "y": 180,
-        "wires": []
-    },
-    {
-        "id": "3c929372158d7db7",
+        "id": "c4a0000000000062",
         "type": "comment",
         "z": "ea320b91f27070db",
         "name": "🎯 Action & Sensor",
-        "info": "Calcul de l'action (on/off/none), commande switch si besoin, mise à jour sensor.",
-        "x": 2260,
-        "y": 180,
+        "x": 1640,
+        "y": 80,
+        "info": "Commande de l'interrupteur, sensor.cumulus_automation, notifications.",
         "wires": []
     },
     {
-        "id": "7431f8d4c76e0dcd",
+        "id": "c4a0000000000001",
         "type": "server-state-changed",
         "z": "ea320b91f27070db",
-        "g": "2ec35c29508aabc8",
+        "g": "c4a0000000000a01",
         "name": "Solaire change",
+        "x": 160,
+        "y": 160,
         "server": "1a7a75b5.c29f2a",
         "version": 6,
         "outputs": 1,
@@ -192,20 +192,20 @@
         "ignoreCurrentStateUnknown": false,
         "ignoreCurrentStateUnavailable": false,
         "outputProperties": [],
-        "x": 140,
-        "y": 240,
         "wires": [
             [
-                "5864a063088c9e5b"
+                "c4a0000000000010"
             ]
         ]
     },
     {
-        "id": "1fb25d7691c83970",
+        "id": "c4a0000000000002",
         "type": "server-state-changed",
         "z": "ea320b91f27070db",
-        "g": "2ec35c29508aabc8",
+        "g": "c4a0000000000a01",
         "name": "Réseau change",
+        "x": 160,
+        "y": 220,
         "server": "1a7a75b5.c29f2a",
         "version": 6,
         "outputs": 1,
@@ -231,20 +231,20 @@
         "ignoreCurrentStateUnknown": false,
         "ignoreCurrentStateUnavailable": false,
         "outputProperties": [],
-        "x": 140,
-        "y": 300,
         "wires": [
             [
-                "5864a063088c9e5b"
+                "c4a0000000000010"
             ]
         ]
     },
     {
-        "id": "48899a033646ed45",
+        "id": "c4a0000000000003",
         "type": "server-state-changed",
         "z": "ea320b91f27070db",
-        "g": "2ec35c29508aabc8",
+        "g": "c4a0000000000a01",
         "name": "Temp eau change",
+        "x": 160,
+        "y": 280,
         "server": "1a7a75b5.c29f2a",
         "version": 6,
         "outputs": 1,
@@ -270,85 +270,20 @@
         "ignoreCurrentStateUnknown": false,
         "ignoreCurrentStateUnavailable": false,
         "outputProperties": [],
-        "x": 140,
-        "y": 360,
         "wires": [
             [
-                "5864a063088c9e5b"
+                "c4a0000000000010"
             ]
         ]
     },
     {
-        "id": "ce2b54e9d9d68923",
+        "id": "c4a0000000000004",
         "type": "server-state-changed",
         "z": "ea320b91f27070db",
-        "g": "2ec35c29508aabc8",
-        "name": "Toggle auto change",
-        "server": "1a7a75b5.c29f2a",
-        "version": 6,
-        "outputs": 1,
-        "exposeAsEntityConfig": "",
-        "entities": {
-            "entity": [
-                "input_boolean.cumulus_automation_enabled"
-            ],
-            "substring": [],
-            "regex": []
-        },
-        "outputInitially": false,
-        "stateType": "str",
-        "ifState": "",
-        "ifStateType": "str",
-        "outputOnlyOnStateChange": true,
-        "for": "0",
-        "forType": "num",
-        "forUnits": "seconds",
-        "ignorePrevStateNull": false,
-        "ignorePrevStateUnknown": false,
-        "ignorePrevStateUnavailable": false,
-        "ignoreCurrentStateUnknown": false,
-        "ignoreCurrentStateUnavailable": false,
-        "outputProperties": [],
-        "x": 140,
-        "y": 420,
-        "wires": [
-            [
-                "5864a063088c9e5b"
-            ]
-        ]
-    },
-    {
-        "id": "c99a9073a88f1e13",
-        "type": "inject",
-        "z": "ea320b91f27070db",
-        "g": "2ec35c29508aabc8",
-        "name": "Tick 1 min",
-        "props": [
-            {
-                "p": "payload"
-            }
-        ],
-        "repeat": "60",
-        "crontab": "",
-        "once": true,
-        "onceDelay": "5",
-        "topic": "",
-        "payload": "",
-        "payloadType": "date",
-        "x": 140,
-        "y": 480,
-        "wires": [
-            [
-                "5864a063088c9e5b"
-            ]
-        ]
-    },
-    {
-        "id": "cafe5011a1c00003",
-        "type": "server-state-changed",
-        "z": "ea320b91f27070db",
-        "g": "2ec35c29508aabc8",
+        "g": "c4a0000000000a01",
         "name": "Temp solaire change",
+        "x": 160,
+        "y": 340,
         "server": "1a7a75b5.c29f2a",
         "version": 6,
         "outputs": 1,
@@ -374,899 +309,302 @@
         "ignoreCurrentStateUnknown": false,
         "ignoreCurrentStateUnavailable": false,
         "outputProperties": [],
-        "x": 140,
-        "y": 540,
         "wires": [
             [
-                "5864a063088c9e5b"
+                "c4a0000000000010"
             ]
         ]
     },
     {
-        "id": "2b6d41d3668062eb",
+        "id": "c4a0000000000005",
+        "type": "server-state-changed",
+        "z": "ea320b91f27070db",
+        "g": "c4a0000000000a01",
+        "name": "Interrupteur change",
+        "x": 160,
+        "y": 400,
+        "server": "1a7a75b5.c29f2a",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "switch.chauffe_eau_electrique"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "",
+        "ifStateType": "str",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "seconds",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": false,
+        "ignoreCurrentStateUnavailable": false,
+        "outputProperties": [],
+        "wires": [
+            [
+                "c4a0000000000010"
+            ]
+        ]
+    },
+    {
+        "id": "c4a0000000000006",
+        "type": "server-state-changed",
+        "z": "ea320b91f27070db",
+        "g": "c4a0000000000a01",
+        "name": "Toggle auto change",
+        "x": 160,
+        "y": 460,
+        "server": "1a7a75b5.c29f2a",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "input_boolean.cumulus_automation_enabled"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "",
+        "ifStateType": "str",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "seconds",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": false,
+        "ignoreCurrentStateUnavailable": false,
+        "outputProperties": [],
+        "wires": [
+            [
+                "c4a0000000000010"
+            ]
+        ]
+    },
+    {
+        "id": "c4a0000000000007",
+        "type": "inject",
+        "z": "ea320b91f27070db",
+        "g": "c4a0000000000a01",
+        "name": "Tick 1 min",
+        "x": 160,
+        "y": 520,
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "60",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "5",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "wires": [
+            [
+                "c4a0000000000010"
+            ]
+        ]
+    },
+    {
+        "id": "c4a0000000000010",
+        "type": "delay",
+        "z": "ea320b91f27070db",
+        "name": "Anti-rafale (1 msg / 10 s)",
+        "x": 420,
+        "y": 340,
+        "pauseType": "rate",
+        "timeout": "5",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "10",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": true,
+        "allowrate": false,
+        "outputs": 1,
+        "wires": [
+            [
+                "c4a0000000000011"
+            ]
+        ]
+    },
+    {
+        "id": "c4a0000000000011",
         "type": "function",
         "z": "ea320b91f27070db",
-        "g": "6ba7c2472dd58523",
+        "g": "c4a0000000000a02",
         "name": "Lire capteurs",
-        "func": "// === Lecture brute des entités HA ===\n// Getters + suivi disponibilité sonde. Pas de logique métier ici.\n// PREREQUIS : cocher \"Enable global context store\" sur le nœud serveur HA.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nlet g;\ntry {\n    g = global.get('homeassistant').homeAssistant.states;\n    if (!g) throw new Error('states indisponibles');\n} catch (e) {\n    node.warn('HA indisponible, tick ignoré : ' + e.message);\n    return null;\n}\n\nconst n = (id, def = 0) => {\n    const v = parseFloat(g[id]?.state);\n    return isNaN(v) ? def : v;\n};\nconst attr = (id, key) => g[id]?.attributes?.[key];\nconst attrNum = (id, key) => {\n    const v = parseFloat(g[id]?.attributes?.[key]);\n    return isNaN(v) ? null : v;\n};\nconst clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\n\n// --- Paramètres utilisateur ---\nmsg.enabled = g['input_boolean.cumulus_automation_enabled']?.state === 'on';\nmsg.target = n('input_number.cumulus_target_temp', 55);\nmsg.minT = n('input_number.cumulus_min_temp', 40);\nmsg.solarTrig = n('input_number.cumulus_solar_trigger', 1100);\n// Bornée : évite division par zéro / valeurs absurdes\nmsg.eff = clamp(n('input_number.cumulus_efficiency', 0.67), 0.3, 1);\nmsg.surplusTrig = n('input_number.cumulus_surplus_trigger', 1200);\n\n// Volume du ballon (entité optionnelle, défaut 200 L) → kWh par °C\nmsg.tankL = clamp(n('input_number.cumulus_tank_volume', 200), 50, 500);\nmsg.kwhPerDeg = msg.tankL * 4.186 / 3600;\n\n// --- Sonde température (capteur critique) ---\nconst rawTemp = g['sensor.temp_chauffe_eau_electrique_temperature']?.state;\nmsg.tempAvailable =\n    rawTemp !== undefined && rawTemp !== 'unavailable' && rawTemp !== 'unknown'\n    && !isNaN(parseFloat(rawTemp));\nmsg.temp = msg.tempAvailable ? parseFloat(rawTemp) : null;\n\n// --- Cumulus solaire amont (préchauffe en série, en amont du ballon élec.) ---\nconst rawSolarTemp = g['sensor.temp_chauffe_eau_solaire_temperature']?.state;\nmsg.solarTempAvailable =\n    rawSolarTemp !== undefined && rawSolarTemp !== 'unavailable' && rawSolarTemp !== 'unknown'\n    && !isNaN(parseFloat(rawSolarTemp));\nmsg.solarTankTemp = msg.solarTempAvailable ? parseFloat(rawSolarTemp) : null;\n\n// Suivi d'indisponibilité (pour notification en mode dégradé)\nconst nowMs = Date.now();\nif (msg.tempAvailable) {\n    setF('sondeDownSince', null);\n    msg.sondeDownHours = 0;\n} else {\n    let ds = getF('sondeDownSince');\n    if (!ds) { ds = nowMs; setF('sondeDownSince', ds); }\n    msg.sondeDownHours = Math.round((nowMs - ds) / 360000) / 10;\n}\n\n// --- Autres mesures ---\nmsg.solar = n('sensor.pince_amperemetrique_power_a', 0);\nmsg.gridPower = n('sensor.pince_amperemetrique_power_b', 0);\nmsg.houseConsumption = n('sensor.pince_amperemetrique_power_ab', 0);\nmsg.cumulusPower = n('sensor.chauffe_eau_electrique_power', 0);\n// Interrupteur : pas de coercition 'unavailable'→'off' (au reboot HA l'entité\n// passe par 'unavailable'/'unknown' avant de se stabiliser). Repli sur le\n// dernier état connu — évite une fausse « commande manuelle » en aval.\nconst rawSwitch = g['switch.chauffe_eau_electrique']?.state;\nmsg.switchAvailable = rawSwitch === 'on' || rawSwitch === 'off';\nmsg.switchState = msg.switchAvailable ? rawSwitch : (getF('lastKnownSwitch') || 'off');\nif (msg.switchAvailable) setF('lastKnownSwitch', rawSwitch);\nmsg.surplus = -msg.gridPower;\n\n// --- Solcast (détaillé pour le slot par slot) ---\nconst sel = g['select.solcast_pv_forecast_utiliser_le_champ_de_prevision']?.state || 'estimate';\nmsg.forecastField = sel === 'estimate10' ? 'pv_estimate10'\n    : sel === 'estimate90' ? 'pv_estimate90'\n        : 'pv_estimate';\nmsg.forecastToday = attr('sensor.solcast_pv_forecast_previsions_pour_aujourd_hui', 'detailedForecast') || [];\nmsg.kwhToday = n('sensor.solcast_pv_forecast_previsions_pour_aujourd_hui', 0);\nmsg.kwhTodayRemaining = n('sensor.solcast_pv_forecast_previsions_de_production_restantes_aujourd_hui', 0);\nmsg.kwhTomorrow = n('sensor.solcast_pv_forecast_previsions_pour_demain', 0);\n\n// --- Percentiles p10/p90 J+1 (incertitude) ---\nmsg.kwhTomorrowP10 = attrNum('sensor.solcast_pv_forecast_previsions_pour_demain', 'estimate10');\nmsg.kwhTomorrowP90 = attrNum('sensor.solcast_pv_forecast_previsions_pour_demain', 'estimate90');\n\n// --- J+2 (après-demain) — fallback null si entité absente ---\nmsg.kwhDayAfter    = n('sensor.solcast_pv_forecast_prevision_jour_3', null);\nmsg.kwhDayAfterP10 = attrNum('sensor.solcast_pv_forecast_prevision_jour_3', 'estimate10');\nmsg.kwhDayAfterP90 = attrNum('sensor.solcast_pv_forecast_prevision_jour_3', 'estimate90');\n\nconst SOLCAST_MAX_AGE_MS = 6 * 3600 * 1000;\nconst solcastLU = g['sensor.solcast_pv_forecast_previsions_pour_aujourd_hui']?.last_updated;\nconst solcastAgeMs = solcastLU ? (Date.now() - new Date(solcastLU).getTime()) : Infinity;\nmsg.solcastStale = solcastAgeMs > SOLCAST_MAX_AGE_MS;\nmsg.solcastAgeHours = isFinite(solcastAgeMs) ? Math.round(solcastAgeMs / 360000) / 10 : null;\n\nreturn msg;",
+        "x": 620,
+        "y": 340,
+        "func": "// === Lecture brute des entités HA ===\n// Getters uniquement, aucune logique métier. Entités configurables dans l'onglet\n// Env du flow, valeurs par défaut = installation d'origine.\n// PREREQUIS : cocher \"Enable global context store\" sur le nœud serveur HA.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nlet g;\ntry {\n    g = global.get('homeassistant').homeAssistant.states;\n    if (!g) throw new Error('states indisponibles');\n} catch (e) {\n    node.warn('HA indisponible, tick ignoré : ' + e.message);\n    return null;\n}\n\nconst eStr = (k, def) => {\n    const v = env.get(k);\n    return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst eNum = (k, def) => {\n    const v = parseFloat(env.get(k));\n    return isNaN(v) ? def : v;\n};\nconst usable = (raw) => raw !== undefined && raw !== null\n    && raw !== 'unavailable' && raw !== 'unknown' && !isNaN(parseFloat(raw));\nconst numOr = (id, def) => (usable(g[id]?.state) ? parseFloat(g[id].state) : def);\nconst attrNum = (id, key) => {\n    const v = parseFloat(g[id]?.attributes?.[key]);\n    return isNaN(v) ? null : v;\n};\nconst clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\nconst now = Date.now();\nmsg.now = now;\n\n// --- Entités ---\nconst ID = {\n    switch: eStr('CUMULUS_SWITCH', 'switch.chauffe_eau_electrique'),\n    power: eStr('CUMULUS_POWER', 'sensor.chauffe_eau_electrique_power'),\n    temp: eStr('WATER_TEMP_SENSOR', 'sensor.temp_chauffe_eau_electrique_temperature'),\n    solarTank: eStr('SOLAR_TANK_SENSOR', 'sensor.temp_chauffe_eau_solaire_temperature'),\n    solar: eStr('SOLAR_SENSOR', 'sensor.pince_amperemetrique_power_a'),\n    grid: eStr('GRID_SENSOR', 'sensor.pince_amperemetrique_power_b'),\n    house: eStr('HOUSE_SENSOR', 'sensor.pince_amperemetrique_power_ab'),\n    clim: eStr('CLIM_SENSOR', 'sensor.clim_automation'),\n    solcastToday: 'sensor.solcast_pv_forecast_previsions_pour_aujourd_hui',\n    solcastTomorrow: 'sensor.solcast_pv_forecast_previsions_pour_demain',\n    solcastRemaining: 'sensor.solcast_pv_forecast_previsions_de_production_restantes_aujourd_hui',\n    solcastField: 'select.solcast_pv_forecast_utiliser_le_champ_de_prevision'\n};\n\nmsg.switchId = ID.switch;\n\n// --- Constantes de l'installation ---\nmsg.loadW = clamp(eNum('CUMULUS_LOAD_W', 1200), 100, 10000);\nmsg.solarMargin = clamp(eNum('SOLAR_SUFFICIENT_MARGIN', 3), 0, 20);\n\n// --- Réglages utilisateur (helpers HA) ---\nmsg.enabled = g['input_boolean.cumulus_automation_enabled']?.state === 'on';\nmsg.target = clamp(numOr('input_number.cumulus_target_temp', 55), 30, 75);\nmsg.minT = clamp(numOr('input_number.cumulus_min_temp', 45), 20, msg.target);\nmsg.effSetting = clamp(numOr('input_number.cumulus_efficiency', 0.9), 0.3, 1);\nmsg.tankL = clamp(numOr('input_number.cumulus_tank_volume', 200), 30, 500);\nmsg.kwhPerDeg = msg.tankL * 4.186 / 3600;   // kWh thermiques par °C\n\n// --- Sonde du ballon électrique (capteur critique) ---\nconst rawTemp = g[ID.temp]?.state;\nmsg.tempAvailable = usable(rawTemp);\nmsg.temp = msg.tempAvailable ? parseFloat(rawTemp) : null;\nif (msg.tempAvailable) {\n    setF('sondeDownSince', null);\n    msg.sondeDownHours = 0;\n} else {\n    let ds = getF('sondeDownSince');\n    if (!ds) { ds = now; setF('sondeDownSince', ds); }\n    msg.sondeDownHours = Math.round((now - ds) / 360000) / 10;\n}\n\n// --- Ballon solaire en amont (préchauffe en série) ---\nconst rawSolarTank = g[ID.solarTank]?.state;\nmsg.solarTankAvailable = usable(rawSolarTank);\nmsg.solarTankTemp = msg.solarTankAvailable ? parseFloat(rawSolarTank) : null;\n\n// --- Mesures électriques ---\nmsg.solar = numOr(ID.solar, 0);\nmsg.gridPower = numOr(ID.grid, 0);           // > 0 import, < 0 export\nmsg.export = -msg.gridPower;\nmsg.house = usable(g[ID.house]?.state) ? parseFloat(g[ID.house].state)\n    : msg.solar + msg.gridPower;\nmsg.cumulusPower = Math.max(0, numOr(ID.power, 0));\n\n// Interrupteur : repli sur le dernier état connu pendant un reboot HA\n// (unavailable/unknown), sinon fausse « commande manuelle » en aval.\nconst rawSwitch = g[ID.switch]?.state;\nmsg.switchAvailable = rawSwitch === 'on' || rawSwitch === 'off';\nmsg.switchState = msg.switchAvailable ? rawSwitch : (getF('lastKnownSwitch') || 'off');\nif (msg.switchAvailable) setF('lastKnownSwitch', rawSwitch);\n\n// --- Flow clim : consommation qu'il rendrait en s'effaçant ---\n// L'eau chaude passe avant le confort : le cumulus « voit à travers » la clim\n// pilotée. Attribut absent ou flow clim inexistant : 0.\nconst ca = g[ID.clim]?.attributes || {};\nconst rec = parseFloat(ca.recoverable_w);\nmsg.climRecoverable = isNaN(rec) ? 0 : Math.max(0, rec);\nconst climMeasured = parseFloat(ca.clim_power_total_w);\nmsg.climTotal = isNaN(climMeasured) ? msg.climRecoverable : Math.max(0, climMeasured);\n\n// --- Solcast : créneaux 30 min d'aujourd'hui et de demain ---\nconst sel = g[ID.solcastField]?.state || 'estimate';\nmsg.forecastField = sel === 'estimate10' ? 'pv_estimate10'\n    : sel === 'estimate90' ? 'pv_estimate90' : 'pv_estimate';\nconst toSlots = (id, day) => (g[id]?.attributes?.detailedForecast || []).map(s => ({\n    t: new Date(s.period_start).getTime(),\n    pv: (parseFloat(s[msg.forecastField]) || 0) * 1000,\n    pv10: (parseFloat(s.pv_estimate10 ?? s[msg.forecastField]) || 0) * 1000,\n    day: day\n})).filter(s => !isNaN(s.t));\nmsg.forecastSlots = toSlots(ID.solcastToday, 0).concat(toSlots(ID.solcastTomorrow, 1))\n    .sort((a, b) => a.t - b.t);\nmsg.kwhToday = numOr(ID.solcastToday, 0);\nmsg.kwhTodayRemaining = numOr(ID.solcastRemaining, 0);\nmsg.kwhTomorrow = numOr(ID.solcastTomorrow, 0);\nmsg.kwhTomorrowP10 = attrNum(ID.solcastTomorrow, 'estimate10');\nmsg.kwhTomorrowP90 = attrNum(ID.solcastTomorrow, 'estimate90');\n\nconst lu = g[ID.solcastToday]?.last_updated;\nconst ageMs = lu ? now - new Date(lu).getTime() : Infinity;\nmsg.solcastAgeHours = isFinite(ageMs) ? Math.round(ageMs / 360000) / 10 : null;\nmsg.solcastStale = !(ageMs <= 6 * 3600 * 1000) || msg.forecastSlots.length === 0;\n\nreturn msg;\n",
         "outputs": 1,
-        "timeout": "",
+        "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 400,
-        "y": 360,
         "wires": [
             [
-                "2e8e45959ba2534d"
+                "c4a0000000000012"
             ]
         ]
     },
     {
-        "id": "2e8e45959ba2534d",
+        "id": "c4a0000000000012",
         "type": "function",
         "z": "ea320b91f27070db",
-        "g": "6ba7c2472dd58523",
-        "name": "Calc modulation demain",
-        "func": "// === Modulation météo : seuil solaire uniquement (cible fixe) ===\n// La cible de température ne varie PLUS avec la météo : reachFor = target\n// (le relèvement anti-légionelle reste appliqué en aval). Le forecast ne sert\n// plus qu’à deux choses : moduler le SEUIL solaire (trigMult — démarrer la\n// chauffe plus tôt quand les jours suivants sont mauvais, plus tard quand ils\n// sont bons) et timer la fenêtre de forçage. Le remplissage solaire / surplus\n// vise donc toujours la cible de confort.\n\n// --- Constantes du modèle ---\nconst POOR_KWH = 6;    // kWh/j : seuil \"pauvre\"\nconst GOOD_KWH = 10;   // kWh/j : seuil \"bon\"\n\nconst clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\nconst scoreFromKwh = (kwh) => clamp((kwh - POOR_KWH) / (GOOD_KWH - POOR_KWH), 0, 1);\n\n// --- Scores continus, multi-jours (pire des 2 jours pilote trigMult) ---\nconst tomorrowScore = scoreFromKwh(msg.kwhTomorrow);\nconst dayAfterKwh = msg.kwhDayAfter != null ? msg.kwhDayAfter : msg.kwhTomorrow;\nconst worstNext2Kwh = Math.min(msg.kwhTomorrow, dayAfterKwh);\nconst worstScore = scoreFromKwh(worstNext2Kwh);\n\n// --- Seuil solaire continu 0.9 → 1.1 (seul levier météo conservé) ---\nconst trigMult = 0.9 + 0.2 * worstScore;\n\n// --- Cible FIXE : plus de modulation de température ---\n// (l’override anti-légionelle éventuel est appliqué dans « Calc anti-légionelle »)\nconst reachFor = msg.target;\n\n// --- Label lisible (rétro-compat dashboard) ---\nlet tomorrowMode;\nif (worstScore < 0.25) tomorrowMode = 'poor';\nelse if (worstScore > 0.75) tomorrowMode = 'good';\nelse tomorrowMode = 'mixed';\n\n// --- Sortie ---\nmsg.tomorrowMode = tomorrowMode;\nmsg.tomorrowScore = Math.round(tomorrowScore * 100) / 100;\nmsg.worstNext2Score = Math.round(worstScore * 100) / 100;\nmsg.worstNext2Kwh = Math.round(worstNext2Kwh * 10) / 10;\nmsg.trigMult = Math.round(trigMult * 1000) / 1000;\nmsg.reachFor = reachFor;  // arrondi final dans « Calc anti-légionelle »\n\nreturn msg;",
+        "g": "c4a0000000000a02",
+        "name": "Apprentissage",
+        "x": 820,
+        "y": 340,
+        "func": "// === Bilan instantané et apprentissage de l'installation ===\n// Tout ce que le planificateur a besoin de savoir et qu'aucun réglage fixe ne\n// décrit bien, appris en continu sur les mesures :\n//   - consommation de fond de la maison, heure par heure (hors cumulus, hors clim)\n//   - biais de Solcast sur la production réelle (jour courant et long terme)\n//   - vitesse de refroidissement du ballon, puisages compris (°C/h)\n//   - rendement réel de la chauffe (°C gagnés par kWh consommé)\n// Plus le surplus lissé, seule grandeur comparée au seuil du plan : le lissage\n// absorbe nuages et bouilloires sans hystérésis de 5 min à attendre.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\nconst now = msg.now;\nconst MIN_DRAW_W = 100;               // en dessous : résistance non alimentée\nconst STARTUP_GRACE_MS = 60 * 1000;   // compteur pas encore rafraîchi après turn_on\nconst SMOOTH_TAU_MS = 3 * 60 * 1000;  // constante de temps du surplus lissé\n\n// Pas de temps depuis la dernière exécution (borné : reprise après coupure)\nconst lastRun = getF('learnLastRun');\nconst dtMs = lastRun ? clamp(now - lastRun, 0, 10 * 60000) : 0;\nsetF('learnLastRun', now);\nconst ema = (prev, sample, tauMs) => {\n    if (prev == null || isNaN(prev)) return sample;\n    const a = 1 - Math.exp(-dtMs / tauMs);\n    return prev + a * (sample - prev);\n};\n\n// --- Consommation réelle du cumulus ---\n// Interrupteur ON mais puissance nulle hors période de grâce : thermostat\n// mécanique ouvert (ballon plein à son réglage), la résistance ne chauffe pas.\nconst lastAction = getF('lastAction');\nconst lastActionAt = getF('lastActionAt') || 0;\nconst justTurnedOn = lastAction === 'turn_on' && msg.switchState === 'on'\n    && (now - lastActionAt) < STARTUP_GRACE_MS;\nlet draw = 0;\nmsg.thermostatTripped = false;\nif (msg.switchState === 'on') {\n    if (msg.cumulusPower >= MIN_DRAW_W) draw = msg.cumulusPower;\n    else if (justTurnedOn) draw = msg.loadW;\n    else msg.thermostatTripped = true;\n}\nmsg.cumulusDraw = Math.round(draw);\nmsg.heating = draw > 0;\n\n// --- Surplus potentiel : ce qui serait exporté sans le cumulus ---\n// « own » : sans le cumulus seul (stockage au-delà de la cible, le confort\n// passe d'abord). « withClim » : en effaçant aussi la clim pilotée (besoin réel\n// d'eau chaude, prioritaire sur le confort).\nconst potOwn = msg.export + draw;\nconst potWithClim = potOwn + msg.climRecoverable;\nconst prevOwn = getF('surplusAvgOwn');\nconst prevClim = getF('surplusAvgClim');\n// Changement d'état du relais : le surplus potentiel est continu par\n// construction, le lissage n'a pas à repartir de zéro.\nconst avgOwn = ema(prevOwn, potOwn, SMOOTH_TAU_MS);\nconst avgClim = ema(prevClim, potWithClim, SMOOTH_TAU_MS);\nsetF('surplusAvgOwn', avgOwn);\nsetF('surplusAvgClim', avgClim);\nmsg.potentialSurplus = Math.round(potWithClim);\nmsg.potentialOwn = Math.round(potOwn);\nmsg.surplusAvgOwn = Math.round(avgOwn);\nmsg.surplusAvgClim = Math.round(avgClim);\n\n// --- Consommation de fond, profil horaire ---\n// Maison moins cumulus moins clim : ce qui mange la production avant tout\n// pilotage. Une case par heure, chacune ne bouge que pendant son heure : en\n// quelques jours le profil reflète la vie de la maison (repas, télétravail…).\nconst DEFAULT_BASE_W = 250;\nlet profile = getF('baseProfile');\nif (!Array.isArray(profile) || profile.length !== 24) profile = new Array(24).fill(DEFAULT_BASE_W);\nconst hour = new Date(now).getHours();\nconst baseSample = clamp(msg.house - draw - msg.climTotal, 0, 5000);\nif (dtMs > 0) {\n    profile[hour] = Math.round(ema(profile[hour], baseSample, 3600 * 1000));\n    setF('baseProfile', profile);\n}\nmsg.baseProfile = profile;\nmsg.baseNow = Math.round(baseSample);\n\n// --- Biais Solcast ---\n// Rapport production mesurée / prévue sur le créneau courant, en journée.\n// Jour courant : réactif (45 min), repart chaque matin du biais long terme.\n// Long terme : lent (≈ 3 jours de soleil), appliqué aux créneaux de demain.\nconst slotNow = (msg.forecastSlots || []).find(s => now >= s.t && now < s.t + 1800000);\nconst dayKey = new Date(now).toDateString();\nlet biasLong = getF('solcastBiasLong');\nif (biasLong == null) biasLong = 1;\nlet biasToday = getF('solcastBiasToday');\nif (getF('solcastBiasDay') !== dayKey) {\n    setF('solcastBiasDay', dayKey);\n    biasToday = biasLong;\n}\nif (slotNow && slotNow.pv >= 150 && !msg.solcastStale && dtMs > 0) {\n    const ratio = clamp(msg.solar / slotNow.pv, 0.2, 2);\n    biasToday = ema(biasToday, ratio, 45 * 60000);\n    biasLong = ema(biasLong, ratio, 3 * 8 * 3600 * 1000);\n}\nmsg.biasToday = Math.round(clamp(biasToday == null ? 1 : biasToday, 0.2, 2) * 1000) / 1000;\nmsg.biasLong = Math.round(clamp(biasLong, 0.3, 1.5) * 1000) / 1000;\nsetF('solcastBiasToday', msg.biasToday);\nsetF('solcastBiasLong', msg.biasLong);\nmsg.forecastNowW = slotNow ? Math.round(slotNow.pv) : null;\n\n// --- Refroidissement du ballon (pertes + puisages), °C/h ---\n// Mesuré par tranches d'une heure sans chauffe. Une chauffe remet la référence.\nconst DEFAULT_DECAY = 0.25;\nlet decay = getF('decayRate');\nif (decay == null) decay = DEFAULT_DECAY;\nif (msg.tempAvailable) {\n    let ref = getF('decayRef');\n    if (msg.heating || !ref) {\n        ref = { t: now, temp: msg.temp };\n    } else if (now - ref.t >= 3600 * 1000) {\n        const h = (now - ref.t) / 3600000;\n        const rate = clamp((ref.temp - msg.temp) / h, 0, 4);\n        // ≈ 2 jours de mémoire : un bain isolé ne fausse pas tout le plan\n        decay = decay + (1 - Math.exp(-h / 48)) * (rate - decay);\n        ref = { t: now, temp: msg.temp };\n    }\n    setF('decayRef', ref);\n}\nsetF('decayRate', decay);\nmsg.decayRate = Math.round(clamp(decay, 0.02, 4) * 1000) / 1000;\n\n// --- Rendement de chauffe ---\n// Session de chauffe = suite de ticks avec résistance alimentée. En fin de\n// session d'au moins 0,4 kWh et 1,5 °C, rendement = énergie thermique gagnée\n// (volume × ΔT) / énergie électrique consommée. La sonde du ballon ne voit\n// qu'une strate : ce « rendement » corrige aussi sa position, d'où l'intérêt\n// de l'apprendre plutôt que de le supposer.\nlet sess = getF('heatSession');\nlet effLearned = getF('effLearned');\nlet effSamples = getF('effSamples') || 0;\nif (msg.heating && msg.tempAvailable) {\n    if (!sess) sess = { startTemp: msg.temp, kwh: 0 };\n    sess.kwh += draw * dtMs / 3600000 / 1000;\n    sess.lastTemp = msg.temp;\n} else if (sess) {\n    const dT = (sess.lastTemp != null ? sess.lastTemp : sess.startTemp) - sess.startTemp;\n    if (sess.kwh >= 0.4 && dT >= 1.5) {\n        const sample = clamp(msg.kwhPerDeg * dT / sess.kwh, 0.3, 1);\n        effLearned = effLearned == null ? sample : effLearned + 0.3 * (sample - effLearned);\n        effSamples++;\n        setF('effLearned', effLearned);\n        setF('effSamples', effSamples);\n    }\n    sess = null;\n}\nsetF('heatSession', sess);\nmsg.effLearned = effLearned == null ? null : Math.round(effLearned * 100) / 100;\nmsg.effSamples = effSamples;\n// Réglage utilisateur tant que l'apprentissage n'a pas trois sessions\nmsg.eff = (effLearned != null && effSamples >= 3) ? clamp(effLearned, 0.3, 1) : msg.effSetting;\nmsg.effSource = (effLearned != null && effSamples >= 3) ? 'appris' : 'réglage';\n\n// --- Bilan énergétique du jour ---\n// Part solaire instantanée de la chauffe = min(1, surplus potentiel / tirage).\nlet day = getF('energyDay');\nif (!day || day.key !== dayKey) day = { key: dayKey, heatKwh: 0, solarKwh: 0 };\nif (draw > 0 && dtMs > 0) {\n    const kwh = draw * dtMs / 3600000 / 1000;\n    const share = clamp(potOwn / draw, 0, 1);\n    day.heatKwh += kwh;\n    day.solarKwh += kwh * share;\n}\nsetF('energyDay', day);\nmsg.heatKwhToday = Math.round(day.heatKwh * 100) / 100;\nmsg.solarKwhToday = Math.round(day.solarKwh * 100) / 100;\nmsg.solarShareToday = day.heatKwh > 0.05 ? Math.round(day.solarKwh / day.heatKwh * 100) : null;\n\nreturn msg;\n",
         "outputs": 1,
-        "timeout": "",
+        "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 660,
-        "y": 360,
         "wires": [
             [
-                "59dc9b8034d64b8b"
+                "c4a0000000000013"
             ]
         ]
     },
     {
-        "id": "59dc9b8034d64b8b",
+        "id": "c4a0000000000013",
         "type": "function",
         "z": "ea320b91f27070db",
-        "g": "6ba7c2472dd58523",
-        "name": "Calc anti-légionelle",
-        "func": "// === Anti-Legionella ===\n// Pas de 60°C depuis 7j  -> relève la cible à 62°C (due)\n// Pas de 60°C depuis 10j -> override critique (force ON, branche dédiée)\n// v3 : forçage critique limité aux heures creuses (chauffe sur réseau).\n//      Mettre LEGIO_CRITICAL_OFFPEAK_ONLY = false pour désactiver.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst LEGIO_TEMP_REACHED = 60;\nconst LEGIO_TARGET = 62;\nconst LEGIO_DUE_DAYS = 7;\nconst LEGIO_CRITICAL_DAYS = 10;\nconst DAY_MS = 24 * 3600 * 1000;\nconst LEGIO_CRITICAL_OFFPEAK_ONLY = true;\nconst OFFPEAK_START_H = 22;   // adapter au contrat (HC)\nconst OFFPEAK_END_H = 6;\n\nconst now = Date.now();\nlet lastHighTempAt = getF('lastHighTempAt');\n\n// Init à la 1re exécution : évite un 'due' fantôme au déploiement\nif (!lastHighTempAt) {\n    lastHighTempAt = now;\n    setF('lastHighTempAt', now);\n}\n\n// Mise à jour SEULEMENT si la sonde est OK\nif (msg.tempAvailable && msg.temp >= LEGIO_TEMP_REACHED) {\n    lastHighTempAt = now;\n    setF('lastHighTempAt', now);\n}\n\nconst sinceHighMs = now - lastHighTempAt;\nmsg.daysSinceHighTemp = Math.round(sinceHighMs / DAY_MS * 10) / 10;\nmsg.legionellaDue = sinceHighMs > LEGIO_DUE_DAYS * DAY_MS;\n\n// Garde sur tempAvailable : null < 62 === true en JS sinon !\nconst rawCritical =\n    sinceHighMs > LEGIO_CRITICAL_DAYS * DAY_MS\n    && msg.tempAvailable\n    && msg.temp < LEGIO_TARGET;\n\nconst h = new Date().getHours();\nconst inOffpeak = h >= OFFPEAK_START_H || h < OFFPEAK_END_H;\nmsg.legionellaCriticalPending = rawCritical;\nmsg.legionellaCritical = rawCritical && (!LEGIO_CRITICAL_OFFPEAK_ONLY || inOffpeak);\n\n// Override cible si due (le label dashboard est porté par legionella_due)\nif (msg.legionellaDue && msg.reachFor < LEGIO_TARGET) {\n    msg.reachFor = LEGIO_TARGET;\n}\n\n// Finalisation\nmsg.reachFor = Math.round(msg.reachFor * 10) / 10;\nmsg.effectiveTrigger = Math.round(msg.solarTrig * msg.trigMult);\nmsg.forcageThreshold = msg.legionellaDue ? LEGIO_TEMP_REACHED : msg.minT;\n\nreturn msg;",
+        "g": "c4a0000000000a02",
+        "name": "Planifier",
+        "x": 1000,
+        "y": 340,
+        "func": "// === Planification de la chauffe sur la prévision solaire ===\n// Contrat Base, export non rémunéré : un kWh exporté ne vaut rien, un kWh\n// réseau coûte le même prix à toute heure. Chauffer coûte donc\n//     kWh réseau = tirage du cumulus − surplus disponible pendant la chauffe\n// et le bon moment est celui où le surplus attendu est le plus grand.\n//\n// Pour chaque besoin (minimum garanti, cible de confort, cycle anti-légionelle),\n// on répartit l'énergie à fournir sur les créneaux Solcast restants avant son\n// échéance, en prenant d'abord les créneaux au plus fort surplus attendu\n// (production × biais appris − consommation de fond apprise). Le surplus du\n// dernier créneau retenu devient le SEUIL du besoin : chauffer maintenant dès\n// que le surplus mesuré l'atteint est aussi bon que le plan.\n//   - Besoin faible, beau temps devant : seuil haut, on attend le pic.\n//   - Besoin fort ou ciel bouché : seuil bas, chauffe avec une part de réseau.\n//   - Échéance imminente sans soleil : seuil nul, chauffe immédiate.\n// Le refroidissement appris du ballon est pris en compte : attendre coûte des\n// degrés, donc de l'énergie.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\nconst r1 = (v) => Math.round(v * 10) / 10;\nconst r2 = (v) => Math.round(v * 100) / 100;\nconst now = msg.now;\nconst H = 3600000;\nconst SLOT_MS = 30 * 60000;\n\nconst LEGIO_TEMP_REACHED = 60;   // °C validant un cycle\nconst LEGIO_GOAL = 61;           // °C visés (marge sur la strate de la sonde)\nconst LEGIO_DUE_DAYS = 7;\nconst LEGIO_DEADLINE_DAYS = 10;\nconst FLOOR_DEADBAND = 2;        // °C au-dessus du minimum visés par le filet\nconst STORAGE_COVER = 0.9;       // part solaire exigée pour stocker au-delà de la cible\nconst COMFORT_MIN_SHARE = 0.15;  // part solaire minimale d'un créneau de confort\nconst MAX_HORIZON_MS = 48 * H;\n\n// --- Anti-légionelle : échéance plutôt que forçage aveugle ---\nlet lastHigh = getF('lastHighTempAt');\nif (!lastHigh) { lastHigh = now; setF('lastHighTempAt', now); }   // pas de « dû » fantôme au déploiement\nif (msg.tempAvailable && msg.temp >= LEGIO_TEMP_REACHED) {\n    lastHigh = now;\n    setF('lastHighTempAt', now);\n}\nmsg.daysSinceHighTemp = r1((now - lastHigh) / (24 * H));\nmsg.legionellaDue = now - lastHigh > LEGIO_DUE_DAYS * 24 * H;\nmsg.legionellaDeadline = lastHigh + LEGIO_DEADLINE_DAYS * 24 * H;\nmsg.legionellaOverdue = msg.legionellaDue && now >= msg.legionellaDeadline;\n\n// --- Cibles ---\nmsg.reachFor = msg.legionellaDue ? Math.max(msg.target, LEGIO_GOAL) : msg.target;\nmsg.stopTemp = Math.min(msg.minT + FLOOR_DEADBAND, msg.target);\nmsg.solarSufficientThreshold = r1(msg.target + msg.solarMargin);\nmsg.solarCoversTarget = msg.solarTankAvailable === true\n    && msg.solarTankTemp >= msg.solarSufficientThreshold;\n\n// --- Créneaux : surplus attendu par créneau ---\nconst base = msg.baseProfile || new Array(24).fill(250);\nconst slots = (msg.forecastSlots || [])\n    .filter(s => s.t + SLOT_MS > now)\n    .map(s => {\n        const bias = s.day === 0 ? msg.biasToday : msg.biasLong;\n        const b = base[new Date(s.t).getHours()] || 0;\n        return {\n            t: s.t,\n            day: s.day,\n            exp: Math.max(0, s.pv * bias - b),\n            exp10: Math.max(0, s.pv10 * Math.min(bias, 1) - b)\n        };\n    });\nconst lastSlotEnd = slots.length ? slots[slots.length - 1].t + SLOT_MS : now;\nmsg.forecastUsable = !msg.solcastStale && slots.length > 0;\n\n// Énergie thermique (kWh) à apporter pour passer de `from` à `goal` °C\nconst thermalNeed = (from, goal) => Math.max(0, goal - from) * msg.kwhPerDeg;\n\n/**\n * Répartit un besoin sur les meilleurs créneaux avant l'échéance.\n *   pessimistic : percentile bas de Solcast (filets de sécurité)\n *   minExp      : surplus attendu minimal d'un créneau retenu. Le confort ne\n *                 chauffe qu'au soleil (contrat Base : chauffer sur le réseau\n *                 maintenant ou plus tard coûte pareil, autant ne pas le faire\n *                 pour une cible qui n'est pas un minimum).\n * Retourne :\n *   threshold   : surplus (W) à partir duquel chauffer maintenant vaut le plan\n *   thresholdOn : seuil de maintien, celui du créneau suivant (une chauffe\n *                 engagée ne s'interrompt pas dès que le besoin restant fond)\n *   nowPicked   : le créneau courant fait partie du plan (seuil nul : c'est\n *                 l'heure, à surplus égal on chauffe au plus près de l'échéance\n *                 pour limiter les pertes)\n */\nfunction plan(goal, deadline, pessimistic, minExp) {\n    const dl = Math.min(deadline, now + MAX_HORIZON_MS);\n    const out = { goal: goal, deadline: dl };\n    if (!msg.tempAvailable) return null;\n    if (thermalNeed(msg.temp, goal) <= 0) return null;\n\n    // Repli sans prévision exploitable : demi-solaire, puis immédiat à l'approche\n    if (!msg.forecastUsable) {\n        out.threshold = (dl - now) < 2 * H ? 0 : Math.round(msg.loadW * 0.5);\n        out.thresholdOn = out.threshold;\n        out.nowPicked = out.threshold === 0;\n        out.needKwh = r2(thermalNeed(msg.temp - msg.decayRate * (dl - now) / H / 2, goal) / msg.eff);\n        out.fallback = true;\n        out.slots = [];\n        return out;\n    }\n\n    const cands = slots\n        .filter(s => s.t < dl)\n        .map(s => {\n            const start = Math.max(s.t, now);\n            const end = Math.min(s.t + SLOT_MS, dl);\n            return { t: s.t, start: start, h: Math.max(0, end - start) / H,\n                exp: pessimistic ? s.exp10 : s.exp };\n        })\n        .filter(s => s.h > 0 && s.exp >= (minExp || 0))\n        // À surplus égal, le plus tard : moins de pertes avant usage\n        .sort((a, b) => b.exp - a.exp || b.t - a.t);\n    if (cands.length === 0 && minExp) return null;\n\n    // Deux passes : le besoin dépend du moment de la chauffe (refroidissement).\n    let tMean = now;\n    let picked = [], need = 0, got = 0;\n    for (let pass = 0; pass < 2; pass++) {\n        const tempThen = msg.temp - msg.decayRate * Math.max(0, tMean - now) / H;\n        need = thermalNeed(tempThen, goal);\n        picked = [];\n        got = 0;\n        for (const s of cands) {\n            if (got >= need) break;\n            picked.push(s);\n            got += msg.loadW / 1000 * s.h * msg.eff;\n        }\n        const w = picked.reduce((a, s) => a + s.h, 0);\n        tMean = w > 0 ? picked.reduce((a, s) => a + (s.start + s.h * H / 2) * s.h, 0) / w : now;\n    }\n    // Besoin plus grand que tous les créneaux réunis : chauffe dès maintenant\n    // pour un filet de sécurité ; pour le confort, au moindre surplus utile.\n    const shortfall = got < need;\n    const last = picked[picked.length - 1];\n    const next = cands[picked.length];\n    if (shortfall && !minExp) {\n        out.threshold = 0;\n        out.nowPicked = true;\n    } else {\n        out.threshold = last ? Math.round(last.exp) : 0;\n        out.nowPicked = picked.some(s => s.start === now || (s.t <= now && now < s.t + SLOT_MS));\n    }\n    out.thresholdOn = next ? Math.min(out.threshold, Math.round(next.exp)) : out.threshold;\n    out.needKwh = r2(need / msg.eff);\n    out.freeKwh = r2(picked.reduce((a, s) => a + Math.min(s.exp, msg.loadW) * s.h, 0) / 1000);\n    out.gridKwh = r2(Math.max(0, out.needKwh - out.freeKwh));\n    out.shortfall = shortfall;\n    out.slots = picked.map(s => s.t).sort((a, b) => a - b);\n    out.firstSlot = out.slots.length ? out.slots[0] : null;\n    return out;\n}\n\nconst plans = [];\n\n// 1. Minimum garanti : échéance = moment où le refroidissement atteint min_temp.\n//    Déjà dessous : immédiat (seuil nul). Prévision pessimiste (p10).\n//    Inutile si le ballon solaire amont fournit déjà l'eau à la cible.\nif (msg.tempAvailable && msg.temp < msg.stopTemp && !msg.solarCoversTarget) {\n    const deadline = msg.temp <= msg.minT ? now\n        : now + (msg.temp - msg.minT) / Math.max(msg.decayRate, 0.02) * H;\n    const p = plan(msg.stopTemp, deadline, true, 0);\n    if (p) plans.push(Object.assign(p, { id: 'floor', label: 'Minimum garanti', basis: 'clim' }));\n}\n\n// 2. Anti-légionelle : échéance au 10e jour. Le plan va chercher le meilleur\n//    soleil d'ici là ; échéance passée, seuil nul.\nif (msg.legionellaDue && msg.tempAvailable && msg.temp < LEGIO_GOAL) {\n    const p = plan(LEGIO_GOAL, msg.legionellaOverdue ? now : msg.legionellaDeadline, false, 0);\n    if (p) plans.push(Object.assign(p, { id: 'legionella', label: 'Anti-légionelle', basis: 'clim' }));\n}\n\n// 3. Confort : cible atteinte d'ici la fin de la prévision (demain soir), au\n//    soleil seulement. Inutile si le ballon solaire amont fournit déjà l'eau.\nif (!msg.solarCoversTarget) {\n    const p = plan(msg.target, lastSlotEnd, false, msg.loadW * COMFORT_MIN_SHARE);\n    if (p) plans.push(Object.assign(p, { id: 'comfort', label: 'Cible de confort', basis: 'clim' }));\n}\n\n// 4. Stockage : chaleur quasi gratuite toujours prise, sans plafond logiciel\n//    (le thermostat mécanique coupe). Le confort de la clim passe avant : seuil\n//    comparé au surplus SANS effacer la clim.\nconst storageW = Math.round(msg.loadW * STORAGE_COVER);\nplans.push({ id: 'storage', label: 'Stockage gratuit', basis: 'own',\n    threshold: storageW, thresholdOn: storageW, nowPicked: false, slots: [] });\n\nmsg.plans = plans;\n\n// Créneaux retenus du besoin le plus contraignant, pour l'affichage\nconst needPlans = plans.filter(p => p.id !== 'storage');\nconst lead = needPlans.slice().sort((a, b) => (b.nowPicked - a.nowPicked) || a.threshold - b.threshold)[0] || null;\nmsg.leadPlan = lead ? lead.id : null;\nmsg.plannedSlots = lead ? lead.slots : [];\nmsg.needKwh = lead ? lead.needKwh : 0;\nmsg.planGridKwh = lead && lead.gridKwh != null ? lead.gridKwh : 0;\n\n// Surplus attendu sur le reste de la journée, pour l'affichage\nmsg.expectedSurplusKwh = r1(slots.filter(s => s.day === 0)\n    .reduce((a, s) => a + s.exp * (s.t + SLOT_MS - Math.max(s.t, now)) / H, 0) / 1000);\n\nreturn msg;\n",
         "outputs": 1,
-        "timeout": "",
+        "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 920,
-        "y": 360,
         "wires": [
             [
-                "fd27b92c88b6873b"
+                "c4a0000000000014"
             ]
         ]
     },
     {
-        "id": "fd27b92c88b6873b",
+        "id": "c4a0000000000014",
         "type": "function",
         "z": "ea320b91f27070db",
-        "g": "6ba7c2472dd58523",
-        "name": "Hyst. anti-injection",
-        "func": "// === Anti-injection : éviter d'injecter du surplus dans le réseau ===\n// cumulusDraw = mesure réelle si dispo.\n// Fallback CUMULUS_LOAD_W uniquement pendant la \"grace period\" post-turn_on\n// (le compteur peut ne pas avoir rafraîchi). Hors grace period, P<100W avec\n// switch ON = thermostat mécanique ouvert → draw réel = 0 (pas de fantôme).\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst now = Date.now();\nconst HYST_MS = 5 * 60 * 1000;\nconst CUMULUS_LOAD_W = Number(env.get('CUMULUS_LOAD_W')) || 1200;\nconst CUMULUS_MIN_POWER_W = 100;\nconst STARTUP_GRACE_MS = 60 * 1000; // 60s, large pour compteurs lents\n\nconst lastActionAt = getF('lastActionAt') || 0;\nconst lastAction = getF('lastAction');\nconst justTurnedOn =\n    lastAction === 'turn_on'\n    && msg.switchState === 'on'\n    && (now - lastActionAt) < STARTUP_GRACE_MS;\n\nlet cumulusDraw, thermostatTripped = false;\nif (msg.switchState !== 'on') {\n    cumulusDraw = 0;\n} else if (msg.cumulusPower >= CUMULUS_MIN_POWER_W) {\n    cumulusDraw = msg.cumulusPower;        // mesure réelle\n} else if (justTurnedOn) {\n    cumulusDraw = CUMULUS_LOAD_W;          // grace period : compteur pas encore rafraîchi\n} else {\n    cumulusDraw = 0;                       // thermostat mécanique coupé (ou panne)\n    thermostatTripped = true;\n}\n\nconst potentialSurplus = msg.surplus + cumulusDraw;\n\nlet highSince = getF('highSurplusSince');\nlet lowSince = getF('lowSurplusSince');\n\nif (potentialSurplus > msg.surplusTrig) {\n    if (!highSince) { highSince = now; setF('highSurplusSince', now); }\n    setF('lowSurplusSince', null);\n    msg.surplusHighFor5min = (now - highSince) > HYST_MS;\n    msg.surplusLowFor5min = false;\n} else {\n    if (!lowSince) { lowSince = now; setF('lowSurplusSince', now); }\n    setF('highSurplusSince', null);\n    msg.surplusHighFor5min = false;\n    msg.surplusLowFor5min = (now - lowSince) > HYST_MS;\n}\n\nlet antiInjActive = getF('antiInjActive') || false;\nif (msg.surplusHighFor5min) antiInjActive = true;\nelse if (msg.surplusLowFor5min) antiInjActive = false;\nsetF('antiInjActive', antiInjActive);\n\nmsg.potentialSurplus = Math.round(potentialSurplus);\nmsg.antiInjActive = antiInjActive;\nmsg.thermostatTripped = thermostatTripped;\n\n// Légionelle critique et thermostat mécanique qui semble coupé : on force\n// quand même le relais (au pire sans effet si le seuil du thermostat est\n// réellement sous 62°C ou en cas de panne réelle), et on notifie/affiche\n// l'anomalie plutôt que d'abandonner silencieusement le cycle.\nmsg.legionellaBlocked = false;\nif (msg.legionellaCritical && thermostatTripped) {\n    msg.legionellaBlocked = true;\n}\n\n// Anti-injection \"utile\" : pas de plafond logiciel sur la température —\n// tant que le surplus existe, on continue de chauffer au-delà de reachFor\n// (le cumulus sert alors de batterie thermique gratuite). Le seul plafond\n// est le thermostat mécanique lui-même (son limiteur haute température\n// coupe physiquement le circuit). On NE dégage pas non plus sur\n// thermostatTripped : lecture instantanée, le thermostat mécanique peut\n// être en creux de son propre cycle — laisser le relais fermé garantit\n// d'absorber le surplus dès qu'il referme le circuit de lui-même.\nmsg.antiInjUseful = antiInjActive;\n\n// === Cumulus solaire amont : préchauffe en série ===\n// Si le ballon solaire (en amont) fournit déjà l'eau à la cible — avec une\n// marge anti-stratification / pertes en ligne — l'appoint électrique n'a rien\n// à faire. On NE touche PAS à l'anti-injection ni à l'anti-légionelle : cette\n// info n'est exploitée qu'à une priorité INFÉRIEURE dans l'arbre de décision.\n// Marge réglable via la variable d'environnement SOLAR_SUFFICIENT_MARGIN (°C, défaut 3).\nconst _solarMarginRaw = parseFloat(env.get('SOLAR_SUFFICIENT_MARGIN'));\nconst SOLAR_SUFFICIENT_MARGIN = isNaN(_solarMarginRaw) ? 3 : _solarMarginRaw;\nmsg.solarSufficientMargin = SOLAR_SUFFICIENT_MARGIN;\nmsg.solarSufficientThreshold = Math.round((msg.reachFor + SOLAR_SUFFICIENT_MARGIN) * 10) / 10;\nmsg.solarCoversTarget =\n    msg.solarTempAvailable === true\n    && msg.solarTankTemp != null\n    && msg.solarTankTemp >= msg.solarSufficientThreshold;\n\nreturn msg;",
+        "g": "c4a0000000000a02",
+        "name": "Décider",
+        "x": 1170,
+        "y": 340,
+        "func": "// === Décision : échelle de priorités, de haut en bas ===\n//   1. Automatisation désactivée        → aucune commande\n//   2. Pause manuelle (45 min)           → aucune commande\n//   3. Interrupteur illisible            → aucune commande\n//   4. Sonde du ballon HS                → stockage gratuit seulement\n//   5. Anti-légionelle échue             → chauffe immédiate\n//   6. Plans (minimum, légionelle, confort, stockage)\n//                                         → chauffe si le surplus lissé atteint\n//                                           le seuil d'un des plans\n//   7. Anti court-cycle du relais        → état maintenu le temps du minimum\n// Chaque étape est publiée dans decision_path, la carte affiche le chemin.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst now = msg.now;\nconst MANUAL_HOLD_MS = 45 * 60000;\nconst HA_LAG_GRACE_MS = 90 * 1000;\nconst MIN_ON_MS = 5 * 60000;\nconst MIN_OFF_MS = 3 * 60000;\nconst HYST_W = 150;               // tolérance à l'arrêt, sous le seuil\n\nconst path = [];\nconst step = (id, label, status, detail) => path.push({ id, label, status, detail: detail || null });\nlet decided = false;\nconst decide = (desired, state, reason, ruleId) => {\n    msg.desired = desired;\n    msg.state = state;\n    msg.reason = reason;\n    msg.rule = ruleId;\n    decided = true;\n};\nconst on = msg.switchState === 'on';\n\n// --- Détection d'une commande manuelle ---\n// Interrupteur changé hors du flow (HA, bouton physique) : pause 45 min.\n// Ignorée tant que l'état est illisible (reboot HA).\nlet expected = getF('expectedSwitch');\nif (expected == null && msg.switchAvailable) { expected = msg.switchState; setF('expectedSwitch', expected); }\nconst lastActionAt = getF('lastActionAt') || 0;\nlet holdUntil = getF('manualHoldUntil') || 0;\nif (msg.switchAvailable && expected != null && msg.switchState !== expected\n    && now - lastActionAt > HA_LAG_GRACE_MS) {\n    holdUntil = now + MANUAL_HOLD_MS;\n    setF('manualHoldUntil', holdUntil);\n    setF('expectedSwitch', msg.switchState);\n    node.warn('Commande manuelle détectée → pause automatisation 45 min');\n}\nmsg.manualHoldActive = now < holdUntil;\nmsg.manualHoldUntil = msg.manualHoldActive ? holdUntil : null;\nconst hhmm = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });\n\n// 1. Automatisation\nif (!msg.enabled) {\n    step('enabled', 'Automatisation active', 'hit', 'désactivée');\n    decide(msg.switchState, 'Désactivé', 'Automatisation désactivée, aucune commande envoyée', 'enabled');\n} else step('enabled', 'Automatisation active', 'pass');\n\n// 2. Pause manuelle\nif (!decided) {\n    if (msg.manualHoldActive) {\n        step('manual', 'Pas de commande manuelle', 'hit', 'reprise à ' + hhmm(holdUntil));\n        decide(msg.switchState, 'Pause (commande manuelle)',\n            'Intervention manuelle détectée, reprise à ' + hhmm(holdUntil), 'manual');\n    } else step('manual', 'Pas de commande manuelle', 'pass');\n}\n\n// 3. Interrupteur\nif (!decided) {\n    if (!msg.switchAvailable) {\n        step('switch', 'Interrupteur joignable', 'hit', 'état illisible');\n        decide(msg.switchState, 'Interrupteur injoignable',\n            'État de l\\'interrupteur illisible, aucune commande', 'switch');\n    } else step('switch', 'Interrupteur joignable', 'pass');\n}\n\n// Comparaison d'un plan au surplus lissé, avec tolérance à l'arrêt\n// Thermostat mécanique ouvert, relais fermé : la résistance absorbera le surplus\n// dès que le thermostat refermera, sans rien coûter d'ici là. Son tirage\n// nominal est compté pour ne pas faire battre le relais.\nconst virtual = on && msg.thermostatTripped ? msg.loadW : 0;\nconst surplusFor = (p) => (p.basis === 'own' ? msg.surplusAvgOwn : msg.surplusAvgClim) + virtual;\n// Seuil nul : le plan chauffe sans condition de surplus, mais seulement quand\n// le créneau courant est retenu (la nuit, le surplus mesuré est négatif).\n// Chauffe engagée : seuil du créneau suivant du plan, moins une tolérance.\nconst thresholdUsed = (p) => (on\n    ? Math.min(p.threshold, p.thresholdOn != null ? p.thresholdOn : p.threshold) - HYST_W\n    : p.threshold);\nconst satisfied = (p) => {\n    if (p.threshold <= 0) return p.nowPicked === true;\n    return surplusFor(p) >= thresholdUsed(p);\n};\n\n// 4. Sonde HS : sans température, seul le stockage gratuit reste sûr\nmsg.degradedSonde = !msg.tempAvailable;\nif (!decided) {\n    if (msg.degradedSonde) {\n        const st = msg.plans.find(p => p.id === 'storage');\n        const ok = satisfied(st);\n        step('sensor', 'Sonde du ballon', 'hit', 'HS depuis ' + msg.sondeDownHours + ' h');\n        decide(ok ? 'on' : 'off', ok ? 'Chauffage (stockage, sonde HS)' : 'Veille (sonde HS)',\n            ok ? 'Sonde HS, surplus quasi gratuit ' + msg.surplusAvgOwn + ' W ≥ ' + st.threshold + ' W'\n                : 'Sonde HS, seul le surplus quasi gratuit est utilisé', 'sensor');\n    } else step('sensor', 'Sonde du ballon', 'pass', msg.temp + ' °C');\n}\n\n// 5. Anti-légionelle échue\nmsg.legionellaCritical = msg.legionellaOverdue && msg.tempAvailable && msg.temp < 61;\nmsg.legionellaBlocked = msg.legionellaCritical && msg.thermostatTripped;\nif (!decided) {\n    if (msg.legionellaCritical) {\n        step('legionella_overdue', 'Légionelle à jour', 'hit',\n            msg.daysSinceHighTemp + ' j sans 60 °C');\n        decide('on', 'Chauffage (anti-légionelle)',\n            msg.daysSinceHighTemp + ' j sans 60 °C, échéance dépassée : chauffe immédiate', 'legionella_overdue');\n    } else step('legionella_overdue', 'Légionelle à jour', 'pass',\n        msg.legionellaDue ? 'cycle dû, planifié' : msg.daysSinceHighTemp + ' j');\n}\n\n// 6. Plans\nmsg.planEval = msg.plans.map(p => ({\n    id: p.id, threshold: p.threshold, surplus: surplusFor(p), ok: satisfied(p)\n}));\nif (!decided) {\n    const hit = msg.plans.find(p => satisfied(p));\n    for (const p of msg.plans) {\n        const s = surplusFor(p);\n        const detail = s + ' / ' + (p.threshold > 0 ? thresholdUsed(p) + ' W' : 'immédiat');\n        if (decided) { step('plan_' + p.id, p.label, 'skip', detail); continue; }\n        if (p === hit) {\n            step('plan_' + p.id, p.label, 'hit', detail);\n            const why = p.threshold <= 0\n                ? (p.id === 'floor' ? 'eau sous le minimum, chauffe immédiate'\n                    : 'échéance proche, plus de meilleur créneau')\n                : 'surplus ' + s + ' W ≥ seuil ' + thresholdUsed(p) + ' W'\n                    + (on && thresholdUsed(p) < p.threshold ? ' (maintien)' : '');\n            const states = {\n                floor: 'Chauffage (minimum garanti)',\n                legionella: 'Chauffage (anti-légionelle)',\n                comfort: 'Chauffage (solaire)',\n                storage: 'Chauffage (stockage gratuit)'\n            };\n            decide('on', states[p.id], p.label + ' : ' + why, 'plan_' + p.id);\n        } else {\n            step('plan_' + p.id, p.label, 'pass', detail);\n        }\n    }\n    if (!decided) {\n        // Rien à faire maintenant : expliquer ce qu'on attend\n        const pending = msg.plans.filter(p => p.id !== 'storage');\n        if (pending.length === 0) {\n            const why = msg.solarCoversTarget\n                ? 'Ballon solaire amont à ' + msg.solarTankTemp + ' °C, appoint inutile'\n                : 'Eau à ' + msg.temp + ' °C, cible ' + msg.target + ' °C atteinte';\n            decide('off', msg.solarCoversTarget ? 'Solaire amont suffisant' : 'Cible atteinte', why, 'idle');\n        } else {\n            const p = pending.slice().sort((a, b) => a.threshold - b.threshold)[0];\n            const next = p.firstSlot && p.firstSlot > now ? ', prochain créneau ' + hhmm(p.firstSlot) : '';\n            decide('off', 'Veille (attente soleil)',\n                p.label + ' : surplus ' + surplusFor(p) + ' W < seuil ' + p.threshold + ' W' + next, 'wait');\n        }\n    }\n}\n\n// 7. Anti court-cycle du relais\nmsg.shortCycleHold = false;\nif (msg.enabled && !msg.manualHoldActive && msg.switchAvailable && msg.desired !== msg.switchState\n    && msg.rule !== 'legionella_overdue' && !(msg.rule === 'plan_floor' && msg.temp <= msg.minT)) {\n    const lastAt = getF('lastActionAt') || 0;\n    const minMs = on ? MIN_ON_MS : MIN_OFF_MS;\n    if (now - lastAt < minMs) {\n        const left = Math.ceil((minMs - (now - lastAt)) / 60000);\n        step('short_cycle', 'Anti court-cycle', 'hit', left + ' min');\n        msg.shortCycleHold = true;\n        msg.reason = msg.reason + ' (appliqué dans ' + left + ' min, anti court-cycle)';\n        msg.desired = msg.switchState;\n    }\n}\n\nmsg.decisionPath = path;\nreturn msg;\n",
         "outputs": 1,
-        "timeout": "",
+        "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 1180,
-        "y": 360,
         "wires": [
             [
-                "023d7e28f730d219"
+                "c4a0000000000015"
             ]
         ]
     },
     {
-        "id": "023d7e28f730d219",
+        "id": "c4a0000000000015",
         "type": "function",
         "z": "ea320b91f27070db",
-        "g": "6ba7c2472dd58523",
-        "name": "Planifier fenêtre",
-        "func": "// === Fenêtre optimale par intégration de la courbe Solcast ===\n// v3 :\n// - Dimensionnée sur le besoin de FORÇAGE (stopTemp - temp), pas sur reachFor :\n//   le forçage est un filet de sécurité (minimum garanti), le chauffage nominal\n//   reste piloté par le solaire / l'anti-injection.\n// - Deadband : démarre sous forcageThreshold, s'arrête à forcageThreshold + 2°C.\n// - Latch : fenêtre figée pendant le forçage (pas de flapping quand Solcast\n//   rafraîchit sa courbe en cours de route).\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst CUMULUS_LOAD_W = Number(env.get('CUMULUS_LOAD_W')) || 1200;\nconst SLOT_MIN = 30;\nconst SLOT_MS = SLOT_MIN * 60 * 1000;\nconst FORCING_DEADBAND = 2; // °C au-dessus du seuil avant arrêt\n\nconst now = Date.now();\nconst stopTemp = Math.min(msg.forcageThreshold + FORCING_DEADBAND, msg.reachFor);\n\n// Info dashboard : besoin pour la cible nominale\nconst dtInfo = msg.tempAvailable ? Math.max(msg.reachFor - msg.temp, 0) : 0;\n// Dimensionnement : besoin pour garantir le minimum\nconst dtForcing = msg.tempAvailable ? Math.max(stopTemp - msg.temp, 0) : 0;\n\nconst energyKwh = msg.kwhPerDeg * dtForcing / msg.eff;\nconst durationMin = Math.ceil((energyKwh / (CUMULUS_LOAD_W / 1000)) * 60);\nconst slotsNeeded = Math.max(1, Math.ceil(durationMin / SLOT_MIN));\n\nconst MIN_AVG_W = msg.tomorrowMode === 'poor'\n    ? CUMULUS_LOAD_W * 0.10\n    : CUMULUS_LOAD_W * 0.30;\n\nconst field = msg.forecastField;\nconst slots = (msg.forecastToday || [])\n    .map(s => ({\n        t: new Date(s.period_start).getTime(),\n        w: (s[field] || 0) * 1000\n    }))\n    .filter(s => s.t + SLOT_MS > now)\n    .sort((a, b) => a.t - b.t);\n\nlet windowStart = null, windowEnd = null, windowAvgW = 0, windowOk = false;\nlet skipReason = null;\n\nif (msg.solcastStale) {\n    skipReason = 'Solcast périmé (' + msg.solcastAgeHours + 'h)';\n} else if (!msg.tempAvailable) {\n    skipReason = 'Sonde température indisponible';\n} else if (dtForcing <= 0) {\n    skipReason = 'Minimum déjà garanti';\n} else if (slots.length < slotsNeeded) {\n    skipReason = 'Pas assez de créneaux Solcast restants';\n} else {\n    let sum = 0;\n    for (let i = 0; i < slotsNeeded; i++) sum += slots[i].w;\n    let best = sum, bestIdx = 0;\n    for (let i = slotsNeeded; i < slots.length; i++) {\n        sum += slots[i].w - slots[i - slotsNeeded].w;\n        if (sum > best) { best = sum; bestIdx = i - slotsNeeded + 1; }\n    }\n    windowStart = slots[bestIdx].t;\n    windowEnd = slots[bestIdx + slotsNeeded - 1].t + SLOT_MS;\n    windowAvgW = Math.round(best / slotsNeeded);\n\n    if (windowAvgW >= MIN_AVG_W) {\n        windowOk = true;\n    } else {\n        skipReason = 'Fenêtre trop faible (' + windowAvgW + 'W < ' + Math.round(MIN_AVG_W) + 'W)';\n    }\n}\n\n// --- Latch de forçage (fenêtre figée + deadband) ---\nlet latch = getF('forcingLatch') || false;\nlet effStart = windowStart, effEnd = windowEnd;\nif (latch) {\n    const ls = getF('forcingWindowStart');\n    const le = getF('forcingWindowEnd');\n    if (ls && le) { effStart = ls; effEnd = le; }\n}\nconst inWindow = effStart != null && now >= effStart && now <= effEnd;\n\nif (!msg.tempAvailable || !inWindow) {\n    latch = false;\n} else if (!latch) {\n    if (windowOk && msg.temp < msg.forcageThreshold) {\n        latch = true;\n        setF('forcingWindowStart', windowStart);\n        setF('forcingWindowEnd', windowEnd);\n    }\n} else if (msg.temp >= stopTemp) {\n    latch = false;\n}\nsetF('forcingLatch', latch);\n\nmsg.dt = dtInfo;\nmsg.dtForcing = Math.round(dtForcing * 10) / 10;\nmsg.stopTemp = stopTemp;\nmsg.energyKwh = Math.round(energyKwh * 100) / 100;\nmsg.durationMin = durationMin;\nmsg.slotsNeeded = slotsNeeded;\nmsg.windowStart = effStart;\nmsg.windowEnd = effEnd;\nmsg.windowAvgW = windowAvgW;\nmsg.minAvgW = Math.round(MIN_AVG_W);\nmsg.windowSkippedReason = skipReason;\nmsg.inWindow = inWindow;\nmsg.isForcing = latch;\n\nreturn msg;",
-        "outputs": 1,
-        "timeout": "",
+        "g": "c4a0000000000a02",
+        "name": "Action & historique",
+        "x": 1360,
+        "y": 340,
+        "func": "// === Action et historique ===\n// action = turn_on / turn_off / none. Aucune commande vers un interrupteur\n// illisible : elle échouerait et fausserait l'historique.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst now = msg.now;\nmsg.action = 'none';\nif (msg.switchAvailable && msg.desired !== msg.switchState) {\n    msg.action = msg.desired === 'on' ? 'turn_on' : 'turn_off';\n    setF('lastActionAt', now);\n    setF('lastAction', msg.action);\n    setF('lastActionReason', msg.reason);\n    setF('expectedSwitch', msg.desired);\n}\nmsg.lastActionAt = getF('lastActionAt');\nmsg.lastAction = getF('lastAction');\nmsg.lastActionReason = getF('lastActionReason');\n\n// Sortie 1 : commande de l'interrupteur, cible portée par le message (entité\n// de l'onglet Env, aucune entité en dur dans les nœuds de service).\n// Sortie 2 : synthèse, vers le sensor et les alertes.\nconst cmd = msg.action === 'none' ? null : {\n    action: msg.action,\n    reason: msg.reason,\n    payload: { target: { entity_id: msg.switchId } }\n};\nreturn [cmd, msg];\n",
+        "outputs": 2,
+        "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 1440,
-        "y": 360,
         "wires": [
             [
-                "6be7eedccedfce7d"
+                "c4a0000000000020"
+            ],
+            [
+                "c4a0000000000030",
+                "c4a0000000000040"
             ]
         ]
     },
     {
-        "id": "6be7eedccedfce7d",
+        "id": "c4a0000000000020",
         "type": "switch",
         "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "1. Automatisation active ?",
-        "property": "enabled",
-        "propertyType": "msg",
-        "rules": [
-            {
-                "t": "true"
-            },
-            {
-                "t": "false"
-            }
-        ],
-        "checkall": "false",
-        "repair": false,
-        "outputs": 2,
-        "x": 1700,
+        "g": "c4a0000000000a03",
+        "name": "ON ou OFF",
+        "x": 1600,
         "y": 240,
-        "wires": [
-            [
-                "fbd43936445640e1"
-            ],
-            [
-                "5c08659fc51ff9ce"
-            ]
-        ],
-        "outputLabels": [
-            "oui → suite",
-            "non → maintien"
-        ]
-    },
-    {
-        "id": "fbd43936445640e1",
-        "type": "switch",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "2. Sonde température OK ?",
-        "property": "tempAvailable",
-        "propertyType": "msg",
-        "rules": [
-            {
-                "t": "true"
-            },
-            {
-                "t": "false"
-            }
-        ],
-        "checkall": "false",
-        "repair": false,
-        "outputs": 2,
-        "x": 1700,
-        "y": 320,
-        "wires": [
-            [
-                "572e1c67d0ebea07"
-            ],
-            [
-                "a44c672c958c7642"
-            ]
-        ],
-        "outputLabels": [
-            "oui → suite",
-            "HS → mode dégradé"
-        ]
-    },
-    {
-        "id": "572e1c67d0ebea07",
-        "type": "switch",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "3. Anti-injection utile ?",
-        "property": "antiInjUseful",
-        "propertyType": "msg",
-        "rules": [
-            {
-                "t": "false"
-            },
-            {
-                "t": "true"
-            }
-        ],
-        "checkall": "false",
-        "repair": false,
-        "outputs": 2,
-        "x": 1700,
-        "y": 400,
-        "wires": [
-            [
-                "4ece99d06ae8096d"
-            ],
-            [
-                "76bff10f9d7cc756"
-            ]
-        ],
-        "outputLabels": [
-            "non → suite",
-            "oui → ON"
-        ]
-    },
-    {
-        "id": "4ece99d06ae8096d",
-        "type": "switch",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "4. Legionella critique ?",
-        "property": "legionellaCritical",
-        "propertyType": "msg",
-        "rules": [
-            {
-                "t": "false"
-            },
-            {
-                "t": "true"
-            }
-        ],
-        "checkall": "false",
-        "repair": false,
-        "outputs": 2,
-        "x": 1700,
-        "y": 480,
-        "wires": [
-            [
-                "4f1825047db975d8"
-            ],
-            [
-                "75b2309546e3dd64"
-            ]
-        ],
-        "outputLabels": [
-            "non → suite",
-            "oui → ON"
-        ]
-    },
-    {
-        "id": "4f1825047db975d8",
-        "type": "switch",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "5. Cible atteinte ?",
-        "property": "tempAvailable ? temp >= reachFor : false",
-        "propertyType": "jsonata",
-        "rules": [
-            {
-                "t": "false"
-            },
-            {
-                "t": "true"
-            }
-        ],
-        "checkall": "false",
-        "repair": false,
-        "outputs": 2,
-        "x": 1700,
-        "y": 560,
-        "wires": [
-            [
-                "cafe5011a1c00001"
-            ],
-            [
-                "1ffee7d7dada97bb"
-            ]
-        ],
-        "outputLabels": [
-            "non → suite",
-            "oui → OFF"
-        ]
-    },
-    {
-        "id": "d60e77f2c3cd66bf",
-        "type": "switch",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "7. Forçage fenêtre ?",
-        "property": "isForcing",
-        "propertyType": "msg",
-        "rules": [
-            {
-                "t": "false"
-            },
-            {
-                "t": "true"
-            }
-        ],
-        "checkall": "false",
-        "repair": false,
-        "outputs": 2,
-        "x": 1700,
-        "y": 720,
-        "wires": [
-            [
-                "bf145909a32e1522"
-            ],
-            [
-                "056b10718da93598"
-            ]
-        ],
-        "outputLabels": [
-            "non → suite",
-            "oui → ON"
-        ]
-    },
-    {
-        "id": "cafe5011a1c00001",
-        "type": "switch",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "6. Cumulus solaire couvre ?",
-        "property": "solarCoversTarget",
-        "propertyType": "msg",
-        "rules": [
-            {
-                "t": "false"
-            },
-            {
-                "t": "true"
-            }
-        ],
-        "checkall": "false",
-        "repair": false,
-        "outputs": 2,
-        "x": 1700,
-        "y": 640,
-        "wires": [
-            [
-                "d60e77f2c3cd66bf"
-            ],
-            [
-                "cafe5011a1c00002"
-            ]
-        ],
-        "outputLabels": [
-            "non → forçage",
-            "oui → OFF (solaire amont)"
-        ]
-    },
-    {
-        "id": "cafe5011a1c00002",
-        "type": "change",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "→ OFF (solaire amont)",
-        "rules": [
-            {
-                "t": "set",
-                "p": "desired",
-                "pt": "msg",
-                "to": "off",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "state",
-                "pt": "msg",
-                "to": "Solaire amont suffisant",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "reason",
-                "pt": "msg",
-                "to": "Cumulus solaire ≥ cible + marge, appoint électrique inutile",
-                "tot": "str"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 1970,
-        "y": 640,
-        "wires": [
-            [
-                "88065b2e801467ff"
-            ]
-        ]
-    },
-    {
-        "id": "bf145909a32e1522",
-        "type": "function",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "8. Hyst. solaire 5 min",
-        "func": "// === Hystérésis solaire symétrique 5 min ===\n// Seuil modulé par la météo de demain (effectiveTrigger).\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst now = Date.now();\nconst HYST_MS = 5 * 60 * 1000;\nconst trig = msg.effectiveTrigger;\n\nlet highSince = getF('highSolarSince');\nlet lowSince = getF('lowSolarSince');\n\nif (msg.solar > trig) {\n    if (!highSince) { highSince = now; setF('highSolarSince', now); }\n    setF('lowSolarSince', null);\n    msg.highFor5min = (now - highSince) > HYST_MS;\n    msg.lowFor5min = false;\n} else {\n    if (!lowSince) { lowSince = now; setF('lowSolarSince', now); }\n    setF('highSolarSince', null);\n    msg.highFor5min = false;\n    msg.lowFor5min = (now - lowSince) > HYST_MS;\n}\nreturn msg;",
-        "outputs": 1,
-        "timeout": "",
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 1700,
-        "y": 800,
-        "wires": [
-            [
-                "e30ae7154386acdf"
-            ]
-        ]
-    },
-    {
-        "id": "e30ae7154386acdf",
-        "type": "switch",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "9. Décision solaire",
-        "property": "payload",
-        "propertyType": "msg",
-        "rules": [
-            {
-                "t": "jsonata_exp",
-                "v": "switchState = 'off' and highFor5min = true",
-                "vt": "jsonata"
-            },
-            {
-                "t": "jsonata_exp",
-                "v": "switchState = 'on'  and lowFor5min  = true",
-                "vt": "jsonata"
-            },
-            {
-                "t": "else"
-            }
-        ],
-        "checkall": "false",
-        "repair": false,
-        "outputs": 3,
-        "x": 1700,
-        "y": 880,
-        "wires": [
-            [
-                "19251ed15f6c7530"
-            ],
-            [
-                "6e1996270f8c92c0"
-            ],
-            [
-                "72c271352874d840"
-            ]
-        ],
-        "outputLabels": [
-            "→ ON solaire",
-            "→ OFF solaire bas",
-            "→ maintien"
-        ]
-    },
-    {
-        "id": "5c08659fc51ff9ce",
-        "type": "change",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "→ Maintien (désactivé)",
-        "rules": [
-            {
-                "t": "set",
-                "p": "desired",
-                "pt": "msg",
-                "to": "switchState",
-                "tot": "msg"
-            },
-            {
-                "t": "set",
-                "p": "state",
-                "pt": "msg",
-                "to": "Désactivé",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "reason",
-                "pt": "msg",
-                "to": "Automatisation désactivée, aucune commande envoyée",
-                "tot": "str"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 1980,
-        "y": 240,
-        "wires": [
-            [
-                "88065b2e801467ff"
-            ]
-        ]
-    },
-    {
-        "id": "76bff10f9d7cc756",
-        "type": "change",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "→ ON (anti-injection)",
-        "rules": [
-            {
-                "t": "set",
-                "p": "desired",
-                "pt": "msg",
-                "to": "on",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "state",
-                "pt": "msg",
-                "to": "Chauffage (anti-injection)",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "reason",
-                "pt": "msg",
-                "to": "Surplus réseau > seuil depuis 5 min",
-                "tot": "str"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 1990,
-        "y": 400,
-        "wires": [
-            [
-                "88065b2e801467ff"
-            ]
-        ]
-    },
-    {
-        "id": "75b2309546e3dd64",
-        "type": "change",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "→ ON (legionella)",
-        "rules": [
-            {
-                "t": "set",
-                "p": "desired",
-                "pt": "msg",
-                "to": "on",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "state",
-                "pt": "msg",
-                "to": "Chauffage (anti-légionelle)",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "reason",
-                "pt": "msg",
-                "to": "Pas de 60°C depuis >10 jours (critique)",
-                "tot": "str"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 1980,
-        "y": 480,
-        "wires": [
-            [
-                "88065b2e801467ff"
-            ]
-        ]
-    },
-    {
-        "id": "1ffee7d7dada97bb",
-        "type": "change",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "→ OFF (cible)",
-        "rules": [
-            {
-                "t": "set",
-                "p": "desired",
-                "pt": "msg",
-                "to": "off",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "state",
-                "pt": "msg",
-                "to": "Cible atteinte",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "reason",
-                "pt": "msg",
-                "to": "Eau à température cible",
-                "tot": "str"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 1970,
-        "y": 560,
-        "wires": [
-            [
-                "88065b2e801467ff"
-            ]
-        ]
-    },
-    {
-        "id": "056b10718da93598",
-        "type": "change",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "→ ON (forçage)",
-        "rules": [
-            {
-                "t": "set",
-                "p": "desired",
-                "pt": "msg",
-                "to": "on",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "state",
-                "pt": "msg",
-                "to": "Chauffage forcé (fenêtre pic)",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "reason",
-                "pt": "msg",
-                "to": "Eau froide dans fenêtre solaire optimale",
-                "tot": "str"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 1970,
-        "y": 720,
-        "wires": [
-            [
-                "88065b2e801467ff"
-            ]
-        ]
-    },
-    {
-        "id": "19251ed15f6c7530",
-        "type": "change",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "→ ON (solaire)",
-        "rules": [
-            {
-                "t": "set",
-                "p": "desired",
-                "pt": "msg",
-                "to": "on",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "state",
-                "pt": "msg",
-                "to": "Chauffage (solaire)",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "reason",
-                "pt": "msg",
-                "to": "Production solaire > seuil depuis 5 min",
-                "tot": "str"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 1970,
-        "y": 840,
-        "wires": [
-            [
-                "88065b2e801467ff"
-            ]
-        ]
-    },
-    {
-        "id": "6e1996270f8c92c0",
-        "type": "change",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "→ OFF (solaire bas)",
-        "rules": [
-            {
-                "t": "set",
-                "p": "desired",
-                "pt": "msg",
-                "to": "off",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "state",
-                "pt": "msg",
-                "to": "Veille (solaire insuffisant)",
-                "tot": "str"
-            },
-            {
-                "t": "set",
-                "p": "reason",
-                "pt": "msg",
-                "to": "Solaire < seuil depuis 5 min",
-                "tot": "str"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 1980,
-        "y": 900,
-        "wires": [
-            [
-                "88065b2e801467ff"
-            ]
-        ]
-    },
-    {
-        "id": "72c271352874d840",
-        "type": "change",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "→ Maintien (hystérésis)",
-        "rules": [
-            {
-                "t": "set",
-                "p": "desired",
-                "pt": "msg",
-                "to": "switchState",
-                "tot": "msg"
-            },
-            {
-                "t": "set",
-                "p": "state",
-                "pt": "msg",
-                "to": "switchState = \"on\" ? \"Chauffage (solaire)\" : \"Veille (attente soleil)\"",
-                "tot": "jsonata"
-            },
-            {
-                "t": "set",
-                "p": "reason",
-                "pt": "msg",
-                "to": "switchState = \"on\" ? \"Maintien chauffage (hystérésis solaire)\" : \"Attente production solaire (hystérésis)\"",
-                "tot": "jsonata"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 1990,
-        "y": 960,
-        "wires": [
-            [
-                "88065b2e801467ff"
-            ]
-        ]
-    },
-    {
-        "id": "88065b2e801467ff",
-        "type": "function",
-        "z": "ea320b91f27070db",
-        "g": "2cb0a37db48d957c",
-        "name": "Calc action & historique",
-        "func": "// === Détermine l'action + historique + détection commande manuelle ===\n// action = turn_on / turn_off / none\n// v3 : si l'interrupteur a été actionné hors du flow → pause de 45 min.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst now = Date.now();\nconst MANUAL_HOLD_MS = 45 * 60 * 1000;\nconst HA_LAG_GRACE_MS = 90 * 1000;   // tolérance de propagation d'état HA\n\n// --- Détection commande manuelle ---\n// Ignorée tant que l'état de l'interrupteur n'est pas exploitable\n// (unavailable/unknown, typiquement pendant un reboot HA) : sinon chaque\n// redémarrage déclencherait une fausse « commande manuelle » → pause de 45 min.\nlet expected = getF('expectedSwitch');\nif (expected == null && msg.switchAvailable) { expected = msg.switchState; setF('expectedSwitch', expected); }\nconst prevActionAt = getF('lastActionAt') || 0;\nlet holdUntil = getF('manualHoldUntil') || 0;\n\nif (msg.switchAvailable && expected != null\n    && msg.switchState !== expected\n    && (now - prevActionAt) > HA_LAG_GRACE_MS) {\n    holdUntil = now + MANUAL_HOLD_MS;\n    setF('manualHoldUntil', holdUntil);\n    expected = msg.switchState;\n    setF('expectedSwitch', expected);\n    node.warn('Commande manuelle détectée → pause automatisation 45 min');\n}\n\nmsg.manualHoldActive = msg.enabled && now < holdUntil;\nif (msg.manualHoldActive) {\n    msg.desired = msg.switchState;\n    msg.state = 'Pause (commande manuelle)';\n    msg.reason = 'Intervention manuelle détectée, reprise à '\n        + new Date(holdUntil).toLocaleTimeString('fr-FR');\n}\nmsg.manualHoldUntil = holdUntil > now ? holdUntil : null;\n\n// --- Action ---\nmsg.action = 'none';\n// On ne commande pas un interrupteur dont l'état n'est pas lisible\n// (unavailable/unknown) : la commande échouerait et fausserait l'historique.\nif (msg.switchAvailable && msg.desired !== msg.switchState) {\n    msg.action = msg.desired === 'on' ? 'turn_on' : 'turn_off';\n    setF('lastActionAt', now);\n    setF('lastAction', msg.action);\n    setF('lastActionReason', msg.reason);\n    setF('expectedSwitch', msg.desired);\n}\n\nmsg.lastActionAt = getF('lastActionAt');\nmsg.lastAction = getF('lastAction');\nmsg.lastActionReason = getF('lastActionReason');\nmsg.now = now;\n\nreturn msg;",
-        "outputs": 1,
-        "timeout": "",
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 2300,
-        "y": 480,
-        "wires": [
-            [
-                "e72ce14c83d11adb",
-                "304a9c27436f037a",
-                "258511b9e9b982e8"
-            ]
-        ]
-    },
-    {
-        "id": "e72ce14c83d11adb",
-        "type": "switch",
-        "z": "ea320b91f27070db",
-        "g": "2cb0a37db48d957c",
-        "name": "Action à prendre ?",
         "property": "action",
         "propertyType": "msg",
         "rules": [
             {
-                "t": "neq",
-                "v": "none",
-                "vt": "str"
-            }
-        ],
-        "checkall": "false",
-        "repair": false,
-        "outputs": 1,
-        "x": 2540,
-        "y": 360,
-        "wires": [
-            [
-                "a2dfa65aafe469d5"
-            ]
-        ],
-        "outputLabels": [
-            "oui"
-        ]
-    },
-    {
-        "id": "a2dfa65aafe469d5",
-        "type": "switch",
-        "z": "ea320b91f27070db",
-        "g": "2cb0a37db48d957c",
-        "name": "ON ou OFF",
-        "property": "desired",
-        "propertyType": "msg",
-        "rules": [
-            {
                 "t": "eq",
-                "v": "on",
+                "v": "turn_on",
                 "vt": "str"
             },
             {
                 "t": "eq",
-                "v": "off",
+                "v": "turn_off",
                 "vt": "str"
             }
         ],
         "checkall": "false",
         "repair": false,
         "outputs": 2,
-        "x": 2720,
-        "y": 360,
         "wires": [
             [
-                "63fce8150e11457c",
-                "dd497c0a9ff7b897"
+                "c4a0000000000021",
+                "c4a0000000000023"
             ],
             [
-                "a466bfe5d1cf4d8d",
-                "dd497c0a9ff7b897"
+                "c4a0000000000022",
+                "c4a0000000000023"
             ]
         ],
         "outputLabels": [
-            "ON",
-            "OFF"
+            "turn_on",
+            "turn_off"
         ]
     },
     {
-        "id": "63fce8150e11457c",
+        "id": "c4a0000000000021",
         "type": "api-call-service",
         "z": "ea320b91f27070db",
-        "g": "2cb0a37db48d957c",
+        "g": "c4a0000000000a03",
         "name": "switch.turn_on",
+        "x": 1820,
+        "y": 200,
         "server": "1a7a75b5.c29f2a",
         "version": 7,
         "debugenabled": false,
@@ -1274,9 +612,7 @@
         "floorId": [],
         "areaId": [],
         "deviceId": [],
-        "entityId": [
-            "switch.chauffe_eau_electrique"
-        ],
+        "entityId": [],
         "labelId": [],
         "data": "",
         "dataType": "jsonata",
@@ -1287,18 +623,18 @@
         "blockInputOverrides": false,
         "domain": "switch",
         "service": "turn_on",
-        "x": 2920,
-        "y": 300,
         "wires": [
             []
         ]
     },
     {
-        "id": "a466bfe5d1cf4d8d",
+        "id": "c4a0000000000022",
         "type": "api-call-service",
         "z": "ea320b91f27070db",
-        "g": "2cb0a37db48d957c",
+        "g": "c4a0000000000a03",
         "name": "switch.turn_off",
+        "x": 1820,
+        "y": 260,
         "server": "1a7a75b5.c29f2a",
         "version": 7,
         "debugenabled": false,
@@ -1306,9 +642,7 @@
         "floorId": [],
         "areaId": [],
         "deviceId": [],
-        "entityId": [
-            "switch.chauffe_eau_electrique"
-        ],
+        "entityId": [],
         "labelId": [],
         "data": "",
         "dataType": "jsonata",
@@ -1319,18 +653,18 @@
         "blockInputOverrides": false,
         "domain": "switch",
         "service": "turn_off",
-        "x": 2920,
-        "y": 360,
         "wires": [
             []
         ]
     },
     {
-        "id": "dd497c0a9ff7b897",
+        "id": "c4a0000000000023",
         "type": "debug",
         "z": "ea320b91f27070db",
-        "g": "2cb0a37db48d957c",
+        "g": "c4a0000000000a03",
         "name": "Log action",
+        "x": 1820,
+        "y": 320,
         "active": true,
         "tosidebar": true,
         "console": false,
@@ -1339,37 +673,37 @@
         "targetType": "msg",
         "statusVal": "reason",
         "statusType": "msg",
-        "x": 2920,
-        "y": 420,
         "wires": []
     },
     {
-        "id": "304a9c27436f037a",
+        "id": "c4a0000000000030",
         "type": "function",
         "z": "ea320b91f27070db",
-        "g": "2cb0a37db48d957c",
+        "g": "c4a0000000000a03",
         "name": "Build sensor payload",
-        "func": "// === Assemble le payload pour sensor.cumulus_automation ===\n\nconst attrs = {\n    reason: msg.reason,\n    action: msg.action,\n    desired: msg.desired,\n    current_switch: msg.switchState,\n    switch_available: msg.switchAvailable === true,\n    enabled: msg.enabled,\n\n    target_temp: msg.target,\n    min_temp: msg.minT,\n    reach_for: msg.reachFor,\n    forcage_threshold: msg.forcageThreshold,\n    stop_temp: msg.stopTemp,\n    tank_volume_l: msg.tankL,\n\n    // --- Modulation météo ---\n    tomorrow_mode: msg.tomorrowMode,\n    tomorrow_score: msg.tomorrowScore,\n    worst_next2_score: msg.worstNext2Score,\n    worst_next2_kwh: msg.worstNext2Kwh,\n    trig_mult: msg.trigMult,\n\n    // --- Prévisions brutes ---\n    today_forecast_kwh: msg.kwhToday,\n    today_remaining_kwh: msg.kwhTodayRemaining,\n    tomorrow_forecast_kwh: msg.kwhTomorrow,\n    tomorrow_p10_kwh: msg.kwhTomorrowP10,\n    tomorrow_p90_kwh: msg.kwhTomorrowP90,\n    day_after_forecast_kwh: msg.kwhDayAfter,\n    day_after_p10_kwh: msg.kwhDayAfterP10,\n    day_after_p90_kwh: msg.kwhDayAfterP90,\n\n    solar_trigger: msg.solarTrig,\n    effective_trigger: msg.effectiveTrigger,\n    efficiency: msg.eff,\n    forecast_field: msg.forecastField,\n    solcast_stale: msg.solcastStale === true,\n    solcast_age_hours: msg.solcastAgeHours != null ? msg.solcastAgeHours : -1,\n\n    water_temp: msg.temp,\n    temp_sensor_available: msg.tempAvailable === true,\n\n    // --- Cumulus solaire amont (préchauffe en série) ---\n    solar_upstream_temp: msg.solarTankTemp,\n    solar_upstream_available: msg.solarTempAvailable === true,\n    solar_covers_target: msg.solarCoversTarget === true,\n    solar_sufficient_threshold: msg.solarSufficientThreshold,\n    solar_sufficient_margin: msg.solarSufficientMargin,\n\n    degraded_sonde: msg.degradedSonde === true,\n    sonde_down_hours: msg.sondeDownHours || 0,\n    solar_power: msg.solar,\n    grid_power: msg.gridPower,\n    house_consumption: msg.houseConsumption,\n    cumulus_power: msg.cumulusPower,\n    thermostat_tripped: msg.thermostatTripped === true,\n\n    surplus: msg.surplus,\n    potential_surplus: msg.potentialSurplus,\n    surplus_trigger: msg.surplusTrig,\n    anti_injection_active: msg.antiInjActive === true,\n    anti_injection_useful: msg.antiInjUseful === true,\n\n    legionella_due: msg.legionellaDue === true,\n    legionella_critical: msg.legionellaCritical === true,\n    legionella_critical_pending: msg.legionellaCriticalPending === true,\n    legionella_blocked: msg.legionellaBlocked === true,\n    days_since_high_temp: msg.daysSinceHighTemp,\n\n    manual_hold_active: msg.manualHoldActive === true,\n\n    delta_t: Math.round((msg.dt || 0) * 10) / 10,\n    dt_forcing: msg.dtForcing || 0,\n    energy_needed_kwh: msg.energyKwh || 0,\n    duration_minutes: msg.durationMin || 0,\n    window_avg_w: msg.windowAvgW || 0,\n    window_min_avg_w: msg.minAvgW || 0,\n    in_window: msg.inWindow === true,\n    is_forcing: msg.isForcing === true,\n\n    last_update: new Date(msg.now).toISOString(),\n    friendly_name: 'Cumulus Automation'\n};\n\nif (msg.windowSkippedReason) attrs.window_skipped_reason = msg.windowSkippedReason;\nif (msg.windowStart)         attrs.window_start = new Date(msg.windowStart).toISOString();\nif (msg.windowEnd)           attrs.window_end = new Date(msg.windowEnd).toISOString();\nif (msg.lastActionAt)        attrs.last_action_at = new Date(msg.lastActionAt).toISOString();\nif (msg.lastAction)          attrs.last_action = msg.lastAction;\nif (msg.lastActionReason)    attrs.last_action_reason = msg.lastActionReason;\nif (msg.manualHoldUntil)     attrs.manual_hold_until = new Date(msg.manualHoldUntil).toISOString();\n\nlet stateStr = msg.state || msg.reason || 'Inconnu';\nif (msg.degradedSonde) stateStr = 'Sonde HS · ' + stateStr;\n\nmsg.payload = {\n    state: stateStr,\n    attributes: attrs\n};\nreturn msg;",
+        "x": 1610,
+        "y": 400,
+        "func": "// === Payload de sensor.cumulus_automation ===\n// Home Assistant refuse `null` comme valeur d'attribut : un seul attribut nul\n// fait échouer la validation du message ENTIER (« validation error », entité\n// jamais mise à jour). Les clés sans valeur sont donc retirées en fin de nœud.\n\nconst iso = (t) => (t ? new Date(t).toISOString() : null);\nconst plans = (msg.plans || []).map(p => ({\n    id: p.id,\n    label: p.label,\n    basis: p.basis,\n    goal_temp: p.goal != null ? p.goal : null,\n    deadline: iso(p.deadline),\n    threshold_w: p.threshold,\n    need_kwh: p.needKwh != null ? p.needKwh : null,\n    free_kwh: p.freeKwh != null ? p.freeKwh : null,\n    grid_kwh: p.gridKwh != null ? p.gridKwh : null,\n    shortfall: p.shortfall === true,\n    fallback: p.fallback === true,\n    first_slot: iso(p.firstSlot),\n    slot_count: (p.slots || []).length\n}));\nconst lead = (msg.plans || []).find(p => p.id === msg.leadPlan);\n\nconst attrs = {\n    reason: msg.reason,\n    rule: msg.rule,\n    action: msg.action,\n    desired: msg.desired,\n    current_switch: msg.switchState,\n    switch_available: msg.switchAvailable === true,\n    enabled: msg.enabled === true,\n\n    // --- Températures et cibles ---\n    water_temp: msg.temp,\n    temp_sensor_available: msg.tempAvailable === true,\n    degraded_sonde: msg.degradedSonde === true,\n    sonde_down_hours: msg.sondeDownHours || 0,\n    target_temp: msg.target,\n    min_temp: msg.minT,\n    reach_for: msg.reachFor,\n    stop_temp: msg.stopTemp,\n    tank_volume_l: msg.tankL,\n\n    // --- Plan ---\n    plans: plans,\n    lead_plan: msg.leadPlan,\n    lead_threshold_w: lead ? lead.threshold : null,\n    planned_slots: (msg.plannedSlots || []).map(iso),\n    need_kwh: msg.needKwh || 0,\n    plan_grid_kwh: msg.planGridKwh || 0,\n    plan_eval: msg.planEval || [],\n    decision_path: msg.decisionPath || [],\n    short_cycle_hold: msg.shortCycleHold === true,\n\n    // --- Bilan électrique ---\n    solar_power: msg.solar,\n    grid_power: msg.gridPower,\n    house_consumption: msg.house,\n    cumulus_power: msg.cumulusPower,\n    cumulus_draw: msg.cumulusDraw,\n    cumulus_load_w: msg.loadW,\n    thermostat_tripped: msg.thermostatTripped === true,\n    potential_surplus: msg.potentialSurplus,\n    surplus_avg_w: msg.surplusAvgClim,\n    surplus_avg_own_w: msg.surplusAvgOwn,\n    clim_recoverable_w: msg.climRecoverable,\n\n    // --- Apprentissage ---\n    base_load_w: msg.baseNow,\n    base_profile: msg.baseProfile,\n    solcast_bias_today: msg.biasToday,\n    solcast_bias_long: msg.biasLong,\n    forecast_now_w: msg.forecastNowW,\n    decay_c_per_h: msg.decayRate,\n    efficiency: msg.eff,\n    efficiency_source: msg.effSource,\n    efficiency_learned: msg.effLearned,\n    efficiency_samples: msg.effSamples || 0,\n\n    // --- Prévisions ---\n    forecast_field: msg.forecastField,\n    solcast_stale: msg.solcastStale === true,\n    solcast_age_hours: msg.solcastAgeHours,\n    today_forecast_kwh: msg.kwhToday,\n    today_remaining_kwh: msg.kwhTodayRemaining,\n    tomorrow_forecast_kwh: msg.kwhTomorrow,\n    tomorrow_p10_kwh: msg.kwhTomorrowP10,\n    tomorrow_p90_kwh: msg.kwhTomorrowP90,\n    expected_surplus_today_kwh: msg.expectedSurplusKwh,\n\n    // --- Ballon solaire amont ---\n    solar_upstream_temp: msg.solarTankTemp,\n    solar_upstream_available: msg.solarTankAvailable === true,\n    solar_covers_target: msg.solarCoversTarget === true,\n    solar_sufficient_threshold: msg.solarSufficientThreshold,\n    solar_sufficient_margin: msg.solarMargin,\n\n    // --- Anti-légionelle ---\n    legionella_due: msg.legionellaDue === true,\n    legionella_critical: msg.legionellaCritical === true,\n    legionella_blocked: msg.legionellaBlocked === true,\n    legionella_deadline: iso(msg.legionellaDeadline),\n    days_since_high_temp: msg.daysSinceHighTemp,\n\n    // --- Pause manuelle ---\n    manual_hold_active: msg.manualHoldActive === true,\n    manual_hold_until: iso(msg.manualHoldUntil),\n\n    // --- Bilan du jour ---\n    heat_kwh_today: msg.heatKwhToday,\n    solar_kwh_today: msg.solarKwhToday,\n    solar_share_today: msg.solarShareToday,\n\n    last_action_at: iso(msg.lastActionAt),\n    last_action: msg.lastAction,\n    last_action_reason: msg.lastActionReason,\n    last_update: new Date(msg.now).toISOString(),\n    friendly_name: 'Cumulus Automation'\n};\n\nfor (const k of Object.keys(attrs)) {\n    if (attrs[k] === null || attrs[k] === undefined) delete attrs[k];\n}\n\nlet stateStr = msg.state || msg.reason || 'Inconnu';\nif (msg.degradedSonde && stateStr.indexOf('sonde HS') === -1) stateStr = 'Sonde HS · ' + stateStr;\nmsg.payload = { state: stateStr, attributes: attrs };\nreturn msg;\n",
         "outputs": 1,
-        "timeout": "",
+        "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 2540,
-        "y": 560,
         "wires": [
             [
-                "83bbdbc20c39fdbc"
+                "c4a0000000000031"
             ]
         ]
     },
     {
-        "id": "83bbdbc20c39fdbc",
+        "id": "c4a0000000000031",
         "type": "ha-sensor",
         "z": "ea320b91f27070db",
-        "g": "2cb0a37db48d957c",
+        "g": "c4a0000000000a03",
         "name": "sensor.cumulus_automation",
+        "x": 1850,
+        "y": 400,
         "entityConfig": "ha_sensor",
         "version": 0,
         "state": "payload.state",
@@ -1383,92 +717,39 @@
         ],
         "inputOverride": "allow",
         "outputProperties": [],
-        "x": 2820,
-        "y": 560,
         "wires": [
             []
         ]
     },
     {
-        "id": "5864a063088c9e5b",
-        "type": "delay",
-        "z": "ea320b91f27070db",
-        "name": "Anti-rafale (1 msg / 10 s)",
-        "pauseType": "rate",
-        "timeout": "5",
-        "timeoutUnits": "seconds",
-        "rate": "1",
-        "nbRateUnits": "10",
-        "rateUnits": "second",
-        "randomFirst": "1",
-        "randomLast": "5",
-        "randomUnits": "seconds",
-        "drop": true,
-        "allowrate": false,
-        "outputs": 1,
-        "x": 260,
-        "y": 550,
-        "wires": [
-            [
-                "2b6d41d3668062eb"
-            ]
-        ]
-    },
-    {
-        "id": "a44c672c958c7642",
-        "type": "change",
-        "z": "ea320b91f27070db",
-        "g": "e9a411a49fd0919e",
-        "name": "→ Mode dégradé (sonde HS)",
-        "rules": [
-            {
-                "t": "set",
-                "p": "degradedSonde",
-                "pt": "msg",
-                "to": "true",
-                "tot": "bool"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 1990,
-        "y": 320,
-        "wires": [
-            [
-                "572e1c67d0ebea07"
-            ]
-        ]
-    },
-    {
-        "id": "258511b9e9b982e8",
+        "id": "c4a0000000000040",
         "type": "function",
         "z": "ea320b91f27070db",
-        "g": "2cb0a37db48d957c",
+        "g": "c4a0000000000a03",
         "name": "Alertes ?",
-        "func": "// === Alertes HA (persistent_notification) ===\n// Une notification par épisode, anti-spam via contexte persistant.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst out = [];\nconst now = Date.now();\n\n// 1. Sonde HS depuis ≥ 2 h (une notif par épisode)\nif ((msg.sondeDownHours || 0) >= 2) {\n    if (!getF('notifSondeDown')) {\n        setF('notifSondeDown', true);\n        out.push({ payload: {\n            notification_id: 'cumulus_sonde_hs',\n            title: 'Cumulus : sonde température HS',\n            message: 'Sonde indisponible depuis ' + msg.sondeDownHours\n                + ' h. Mode dégradé actif (solaire / anti-injection uniquement).'\n        }});\n    }\n} else if (msg.tempAvailable) {\n    setF('notifSondeDown', false);\n}\n\n// 2. Cycle anti-légionelle forcé malgré un thermostat mécanique qui semble coupé\nif (msg.legionellaBlocked) {\n    const last = getF('notifLegioBlockedAt') || 0;\n    if (now - last > 24 * 3600 * 1000) {\n        setF('notifLegioBlockedAt', now);\n        out.push({ payload: {\n            notification_id: 'cumulus_legio_blocked',\n            title: 'Cumulus : anti-légionelle forcé malgré thermostat coupé',\n            message: msg.daysSinceHighTemp + ' j sans 60°C. Relais forcé malgré thermostat mécanique probablement coupé avant la cible. Réglage à vérifier (62°C minimum nécessaire).'\n        }});\n    }\n}\n\nif (out.length === 0) return null;\nreturn [out];",
+        "x": 1590,
+        "y": 460,
+        "func": "// === Alertes HA (persistent_notification) ===\n// Une notification par épisode, anti-spam via contexte persistant.\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst out = [];\nconst now = msg.now;\nconst DAY_MS = 24 * 3600 * 1000;\n\n// 1. Sonde HS depuis ≥ 2 h\nif ((msg.sondeDownHours || 0) >= 2) {\n    if (!getF('notifSondeDown')) {\n        setF('notifSondeDown', true);\n        out.push({ payload: {\n            notification_id: 'cumulus_sonde_hs',\n            title: 'Cumulus : sonde température HS',\n            message: 'Sonde indisponible depuis ' + msg.sondeDownHours\n                + ' h. Seul le surplus quasi gratuit chauffe l\\'eau, aucun minimum garanti.'\n        }});\n    }\n} else if (msg.tempAvailable) {\n    setF('notifSondeDown', false);\n}\n\n// 2. Cycle anti-légionelle forcé malgré un thermostat mécanique ouvert\nif (msg.legionellaBlocked) {\n    const last = getF('notifLegioBlockedAt') || 0;\n    if (now - last > DAY_MS) {\n        setF('notifLegioBlockedAt', now);\n        out.push({ payload: {\n            notification_id: 'cumulus_legio_blocked',\n            title: 'Cumulus : anti-légionelle bloquée par le thermostat',\n            message: msg.daysSinceHighTemp + ' j sans 60 °C. Relais fermé mais le thermostat '\n                + 'mécanique coupe avant 60 °C (eau à ' + msg.temp + ' °C). Réglage du '\n                + 'thermostat à vérifier.'\n        }});\n    }\n}\n\n// 3. Prévision Solcast inexploitable depuis ≥ 12 h : le plan tourne en repli\nif (msg.solcastStale && (msg.solcastAgeHours == null || msg.solcastAgeHours >= 12)) {\n    const last = getF('notifSolcastAt') || 0;\n    if (now - last > DAY_MS) {\n        setF('notifSolcastAt', now);\n        out.push({ payload: {\n            notification_id: 'cumulus_solcast',\n            title: 'Cumulus : prévision Solcast inexploitable',\n            message: 'Aucune prévision récente ('\n                + (msg.solcastAgeHours == null ? 'absente' : msg.solcastAgeHours + ' h')\n                + '). Planification en repli : chauffe dès 50 % de part solaire.'\n        }});\n    }\n}\n\nif (out.length === 0) return null;\nreturn [out];\n",
         "outputs": 1,
-        "timeout": "",
+        "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 2530,
-        "y": 640,
         "wires": [
             [
-                "74b1aa94ef125cdc"
+                "c4a0000000000041"
             ]
         ]
     },
     {
-        "id": "74b1aa94ef125cdc",
+        "id": "c4a0000000000041",
         "type": "api-call-service",
         "z": "ea320b91f27070db",
-        "g": "2cb0a37db48d957c",
+        "g": "c4a0000000000a03",
         "name": "Notification HA",
+        "x": 1840,
+        "y": 480,
         "server": "1a7a75b5.c29f2a",
         "version": 7,
         "debugenabled": false,
@@ -1487,44 +768,42 @@
         "blockInputOverrides": false,
         "domain": "persistent_notification",
         "service": "create",
-        "x": 2920,
-        "y": 640,
         "wires": [
             []
         ]
     },
     {
-        "id": "d9b99d4737c71434",
+        "id": "c4a0000000000050",
         "type": "catch",
         "z": "ea320b91f27070db",
         "name": "Erreurs du flow",
+        "x": 1400,
+        "y": 560,
         "scope": null,
         "uncaught": false,
-        "x": 2300,
-        "y": 700,
         "wires": [
             [
-                "b9bb81b8dc7b8f81"
+                "c4a0000000000051"
             ]
         ]
     },
     {
-        "id": "b9bb81b8dc7b8f81",
+        "id": "c4a0000000000051",
         "type": "function",
         "z": "ea320b91f27070db",
         "name": "Gestion erreur",
-        "func": "// === Gestion des erreurs du flow (nœud catch) ===\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst src = (msg.error && msg.error.source) || {};\nconst SWITCH_NODES = ['695583ad1f4ba8e3', '62d66053da559b5c']; // turn_on / turn_off\n\n// Commande switch échouée : l'historique optimiste est faux → purge,\n// sinon la grace period anti-injection et la détection manuelle dérivent.\nif (SWITCH_NODES.indexOf(src.id) !== -1) {\n    setF('lastAction', null);\n    setF('lastActionAt', 0);\n    setF('expectedSwitch', null);\n}\n\n// Anti-spam : 1 notification max / 15 min\nconst now = Date.now();\nconst last = getF('lastErrorNotifAt') || 0;\nif (now - last < 15 * 60 * 1000) return null;\nsetF('lastErrorNotifAt', now);\n\nmsg.payload = {\n    notification_id: 'cumulus_flow_error',\n    title: 'Cumulus : erreur dans le flow',\n    message: (src.name || src.id || '?') + ' : '\n        + (msg.error && msg.error.message ? msg.error.message : 'erreur inconnue')\n};\nreturn msg;",
+        "x": 1600,
+        "y": 560,
+        "func": "// === Gestion des erreurs du flow (nœud catch) ===\n\nconst STORE = 'file';\nfunction getF(k) { try { return flow.get(k, STORE); } catch (e) { return flow.get(k); } }\nfunction setF(k, v) { try { flow.set(k, v, STORE); } catch (e) { flow.set(k, v); } }\n\nconst src = (msg.error && msg.error.source) || {};\n// Nœuds de commande de l'interrupteur, repérés par leur nom : un identifiant\n// en dur ne survit pas à un réimport avec renumérotation.\nconst SWITCH_NODES = ['switch.turn_on', 'switch.turn_off'];\n\n// Commande échouée : l'historique optimiste est faux → purge, sinon la période\n// de grâce et la détection manuelle dérivent.\nif (SWITCH_NODES.indexOf(src.name) !== -1) {\n    setF('lastAction', null);\n    setF('lastActionAt', 0);\n    setF('expectedSwitch', null);\n}\n\n// Anti-spam : 1 notification max / 15 min\nconst now = Date.now();\nconst last = getF('lastErrorNotifAt') || 0;\nif (now - last < 15 * 60 * 1000) return null;\nsetF('lastErrorNotifAt', now);\n\nmsg.payload = {\n    notification_id: 'cumulus_flow_error',\n    title: 'Cumulus : erreur dans le flow',\n    message: (src.name || src.id || '?') + ' : '\n        + (msg.error && msg.error.message ? msg.error.message : 'erreur inconnue')\n};\nreturn msg;\n",
         "outputs": 1,
-        "timeout": "",
+        "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 2530,
-        "y": 700,
         "wires": [
             [
-                "74b1aa94ef125cdc"
+                "c4a0000000000041"
             ]
         ]
     },

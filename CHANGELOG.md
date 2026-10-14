@@ -2,6 +2,74 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [v2.0.0] - 2026-10-14
+
+Refonte des deux automatisations pour un contrat Base à export non rémunéré :
+consommer le surplus quand il existe, et seulement la part du réseau qui ne
+peut pas être évitée. **Changement incompatible** : les deux flows sont à
+réimporter (voir README, « Mise à jour depuis une version à seuils fixes ou à
+paliers ») ; les cartes restent compatibles avec les anciens flows.
+
+### Flow cumulus — planification au surplus
+
+- **Seuils fixes supprimés** (1 250 W pendant 5 min, rarement tenus avec 1,5 à
+  2 kW de crête : l'eau est descendue de 55 à 39 °C du 10 au 13 octobre en
+  exportant des heures durant). Chaque besoin — minimum garanti, anti-
+  légionelle, cible de confort — est réparti sur les créneaux Solcast au plus
+  fort surplus attendu avant son échéance ; le surplus du dernier créneau
+  retenu devient le seuil de chauffe. Rejeu des 10-12 octobre : 5,6 kWh à 81 %
+  solaire, eau jamais sous 50,9 °C.
+- **Confort au soleil seulement** : jamais de chauffe au réseau seul pour la
+  cible (à prix constant, plus tard coûte pareil et perd moins). Seuls le
+  minimum et l'anti-légionelle peuvent l'imposer, au plus près de l'échéance.
+- **Anti-légionelle à échéance** : cycle dû au 7e jour, planifié au meilleur
+  soleil, immédiat au 10e. Plus de restriction aux heures creuses.
+- **Apprentissage** : consommation de fond heure par heure, biais Solcast,
+  refroidissement du ballon, rendement de chauffe (remplace le réglage après
+  trois sessions).
+- **Surplus lissé sur 3 min** au lieu des hystérésis de 5 min ; chauffe engagée
+  maintenue au niveau du créneau suivant du plan ; anti court-cycle du relais.
+- **Eau chaude avant le confort** : le surplus du cumulus inclut la
+  consommation que la clim rendrait ; le stockage au-delà de la cible passe
+  après le confort.
+- Entités configurables dans l'onglet Env ; `decision_path`, `plans`,
+  `planned_slots` et bilan solaire du jour publiés ; nœud de gestion d'erreur
+  corrigé (il visait des identifiants de nœuds qui n'existaient plus).
+- `input_number.cumulus_solar_trigger` et `input_number.cumulus_surplus_trigger`
+  ne sont plus lus.
+
+### Flow clim — routeur solaire
+
+- **Consigne modulée** pour suivre le surplus, au lieu de paliers d'unités à
+  800 W supposés (300 à 600 W mesurés) : plus profonde quand le compteur
+  exporte, relâchée vers le ralenti quand il importe, démarrage et arrêt
+  seulement aux extrémités.
+- **Puissance de chaque unité apprise** sur les compteurs des disjoncteurs.
+- **Tolérance d'import** (`input_number.clim_import_allowance`, nouveau) pour
+  une pièce hors de sa cible ; le stockage reste au seul surplus. Remplace
+  `input_number.clim_surplus_trigger`.
+- **Saison sur la prévision du jour** (`weather.get_forecasts`), sonde
+  extérieure ou entité météo en repli.
+- **Reprise en main détectée sur la consigne** aussi, plus seulement le mode.
+- Plus de réservation à deviner pour l'eau chaude : le cumulus démarre quand il
+  veut, la boucle s'efface dans la minute.
+
+### Cartes
+
+- Cumulus 2.0.0 : créneaux du plan sur la courbe Solcast, bande stratégie
+  (seuil, part réseau prévue, valeurs apprises), chemin de décision publié par
+  le flow, part solaire du jour.
+- Clim 2.0.0 : budget eau chaude / clim / export avec l'écart corrigé, consigne
+  et puissance par pièce, réglage de la tolérance d'import.
+
+### Outillage
+
+- Sources des nœuds `function` dans `nodered/`, flows générés par
+  `tools/build-flows.js` (contrôlé en CI).
+- Simulations : `tests/cumulus-flow-sim.js` (nouvelle), `tests/clim-flow-sim.js`
+  (réécrite, modèle d'unités inverter), `tests/coupled-flows-sim.js` (les deux
+  flows sur un même compteur).
+
 ## [v1.21.0] - 2026-10-07
 
 - **Verrou des commandes sur les deux cartes.** Un défilement qui accrochait un

@@ -1,123 +1,356 @@
-# Cumulus Solaire Card
+# Cumulus & Clim Solaire
 
-Carte Lovelace dédiée à l'automatisation Node-RED **Cumulus Solaire** (V3+). Pensée pour exploiter chaque attribut exposé par `sensor.cumulus_automation` en un seul coup d'œil : état courant, température, fenêtre solaire optimale, anti-injection, anti-Legionella, fraîcheur Solcast.
+Deux flows Node-RED qui pilotent le cumulus et les climatisations sur le surplus
+solaire, et deux cartes Lovelace qui les rendent lisibles.
+
+- **`flows.json` — Cumulus Solaire** : planification de la chauffe sur la
+  prévision Solcast, au meilleur surplus attendu, avec minimum garanti et
+  anti-légionelle à échéance.
+- **`flows-clim.json` — Climatisation Solaire** : routeur solaire qui module la
+  consigne des unités inverter pour suivre le surplus, eau chaude prioritaire.
+- **`cumulus-solaire-card` / `clim-solaire-card`** : livrées ensemble par HACS
+  dans `hacs-water.js`.
 
 ![preview](docs/preview.png)
 
-## Ce qu'elle affiche
+## Principe : contrat Base, export non rémunéré
 
-- **Hero** : icône et titre adaptés à l'état, par priorité : automatisation désactivée → pause manuelle → Legionella forcée (thermostat suspect) → Legionella critique → Legionella en attente HC → anti-injection (utile) → Legionella due → Solcast périmé → forçage → chauffe → **solaire amont** (eau déjà fournie à la cible par le cumulus solaire) → cible atteinte → veille. Icône et barre d'accent (haut) en pulsation/shimmer pendant la chauffe active du cumulus.
-- **Cadran 270°** de la température de l'eau, avec dégradé bleu → ambre → rouge et repères colorés pour `min_temp`, `forcage_threshold`, `stop_temp` (arrêt du forçage), `reach_for` et le seuil 60°C anti-Legionella (visible uniquement quand pertinent).
-- **Courbe Solcast** du jour avec lissage Bézier, bande verte sur la fenêtre optimale (`window_start` / `window_end`, figée pendant un forçage), curseur "maintenant" pointillé. Âge Solcast en rouge si périmé (>6h).
-- **Pastilles** : production solaire instantanée, surplus potentiel (anti-injection verte uniquement si utile, `anti_injection_useful`), jours depuis le dernier 60°C, température du **cumulus solaire amont** (`solar_upstream_temp`, teal en cas de couverture déjà de la cible), et « Thermostat coupé » en cas d'ouverture du circuit par le thermostat mécanique.
-- **Chemin de décision** (panneau ℹ de la bande stratégie) : 9 priorités du flow affichées en échelle, règles passées ✓, règle décisive →, règles court-circuitées grisées, avec les valeurs comparées (surplus/seuil, temp/cible, solaire amont/seuil, solaire/seuil effectif).
+Un kWh exporté ne rapporte rien, un kWh soutiré coûte le même prix à toute
+heure. Les deux flows en tirent la même règle : **consommer le surplus quand il
+existe, et seulement la part du réseau qui ne peut pas être évitée**.
 
-## Pré-requis
+Ordre de priorité du surplus, d'un flow à l'autre :
 
-Flow Node-RED déployé et exécuté au moins une fois, pour l'exposition de ces attributs sur `sensor.cumulus_automation` :
+1. **Eau chaude jusqu'à sa cible** — le cumulus compte la consommation que la
+   clim rendrait (`recoverable_w`) dans son propre surplus et démarre sans
+   attendre ; la clim relâche ses consignes dans la minute.
+2. **Confort** des pièces (froid ou chaud), puis **stockage** dans les murs
+   (consigne au-delà de la cible tant qu'il reste du surplus).
+3. **Stockage d'eau chaude** au-delà de la cible — il passe après le confort :
+   la clim compte sa consommation comme disponible et la lui reprend.
+
+Les deux flows ne se parlent qu'à travers leurs sensors Home Assistant. La
+simulation couplée (`tests/coupled-flows-sim.js`) vérifie que les deux boucles
+tiennent cet ordre sur une journée entière sans se renvoyer la balle.
+
+## Flow cumulus (`flows.json`) — planification au surplus
+
+### Ce qui change par rapport aux seuils fixes
+
+Jusqu'en v1.21, le cumulus attendait 1 250 W de surplus pendant 5 min. Avec une
+production de crête autour de 1,5 à 2 kW, ce seuil n'était presque jamais tenu :
+du 10 au 13 octobre 2026, l'eau est passée de 55 °C (samedi soir) à 39 °C
+(mardi midi) en exportant 400 à 950 W pendant des heures, avant une remise à
+niveau en grande partie au réseau le mardi.
+
+Rejeu de ces trois jours (mesures réelles à 5 min, production Solcast supposée
+exacte) à travers le nouveau flow : **5,6 kWh chauffés à 81 % solaire**, eau
+jamais sous 50,9 °C, sans rattrapage au réseau. Ce rejeu est indicatif : une
+vraie prévision se trompe, d'où l'apprentissage du biais Solcast.
+
+### Comment il décide
+
+Chaque besoin a une **échéance**, et son énergie est répartie sur les créneaux
+Solcast de 30 min restants avant elle, en prenant d'abord ceux au plus fort
+**surplus attendu** (production × biais appris − consommation de fond apprise
+à cette heure-là). Le surplus attendu du dernier créneau retenu devient le
+**seuil** du besoin : chauffer dès que le surplus mesuré l'atteint vaut le plan.
+
+| Besoin | Cible | Échéance | Particularité |
+|---|---|---|---|
+| **Minimum garanti** | `min_temp` + 2 °C | moment où le refroidissement appris atteindrait `min_temp` | prévision pessimiste (p10) ; réseau accepté si aucun créneau ne suffit |
+| **Anti-légionelle** | 61 °C | 10e jour sans 60 °C (cycle dû dès le 7e) | va chercher le meilleur soleil d'ici l'échéance ; échue, chauffe immédiate |
+| **Cible de confort** | `target_temp` | fin de la prévision (demain soir) | **au soleil seulement** : créneaux d'au moins 15 % de part solaire |
+| **Stockage gratuit** | — | — | surplus ≥ 90 % du tirage, sans plafond logiciel (le thermostat coupe) |
+
+Conséquences :
+
+- besoin faible et beau temps devant : seuil haut, la chauffe attend le pic ;
+- besoin fort ou ciel bouché : seuil bas, chauffe avec une part de réseau, la
+  seule qui n'aurait pas pu être évitée plus tard ;
+- jamais de chauffe au réseau seul pour le confort : à prix constant, la faire
+  plus tard coûte pareil et perd moins de chaleur ; seuls le minimum et
+  l'anti-légionelle peuvent l'imposer, au plus près de leur échéance ;
+- le refroidissement est pris en compte : attendre coûte des degrés, donc de
+  l'énergie.
+
+Une chauffe engagée se poursuit tant que le surplus reste au niveau du créneau
+suivant du plan (moins 150 W), pour ne pas hacher la chauffe à mesure que le
+besoin restant fond. Anti court-cycle du relais : 5 min allumé, 3 min éteint.
+
+### Appris en continu
+
+| Grandeur | Mesure | Mémoire |
+|---|---|---|
+| Consommation de fond, **heure par heure** | maison − cumulus − clim | ≈ 1 h d'observation par case (quelques jours) |
+| **Biais Solcast** | production mesurée / prévue sur le créneau courant | 45 min pour aujourd'hui, ≈ 3 jours de soleil pour demain |
+| **Refroidissement** du ballon (pertes + puisages) | °C perdus par heure sans chauffe | ≈ 2 jours |
+| **Rendement** de chauffe | °C gagnés × volume / kWh consommés, par session | remplace `input_number.cumulus_efficiency` après 3 sessions |
+
+Le surplus comparé aux seuils est lissé sur 3 min : un nuage ou une bouilloire
+ne déclenchent rien, sans les 5 min d'hystérésis d'avant.
+
+### Échelle de décision
+
+1. Automatisation désactivée → aucune commande.
+2. Pause manuelle (interrupteur actionné hors du flow) → 45 min sans commande.
+3. Interrupteur illisible → aucune commande.
+4. Sonde du ballon HS → stockage gratuit seulement, notification après 2 h.
+5. Anti-légionelle échue → chauffe immédiate (thermostat qui coupe avant
+   60 °C : notification).
+6. Plans : minimum, anti-légionelle, confort, stockage — le premier satisfait
+   allume.
+7. Anti court-cycle du relais.
+
+Chaque étape est publiée dans `decision_path`, que la carte affiche telle quelle.
+
+### Ballon solaire amont
+
+Ballon **solaire** plombé en série en amont du ballon électrique : dès que sa
+sonde (`SOLAR_TANK_SENSOR`) atteint `target_temp` + `SOLAR_SUFFICIENT_MARGIN`
+(3 °C par défaut), les plans de minimum et de confort s'effacent. L'anti-
+légionelle et le stockage gratuit restent actifs.
+
+### Entités (onglet Env du flow)
+
+| Variable | Défaut |
+|---|---|
+| `CUMULUS_LOAD_W` | `1200` |
+| `CUMULUS_SWITCH` | `switch.chauffe_eau_electrique` |
+| `CUMULUS_POWER` | `sensor.chauffe_eau_electrique_power` |
+| `WATER_TEMP_SENSOR` | `sensor.temp_chauffe_eau_electrique_temperature` |
+| `SOLAR_TANK_SENSOR` | `sensor.temp_chauffe_eau_solaire_temperature` |
+| `SOLAR_SUFFICIENT_MARGIN` | `3` |
+| `SOLAR_SENSOR` / `GRID_SENSOR` / `HOUSE_SENSOR` | `sensor.pince_amperemetrique_power_a` / `_b` / `_ab` |
+| `CLIM_SENSOR` | `sensor.clim_automation` (absent : 0 W récupérable) |
+
+Helpers : `input_boolean.cumulus_automation_enabled`,
+`input_number.cumulus_target_temp`, `input_number.cumulus_min_temp`,
+`input_number.cumulus_efficiency` (valeur de départ),
+`input_number.cumulus_tank_volume` (optionnel, 200 L). Les anciens
+`input_number.cumulus_solar_trigger` et `input_number.cumulus_surplus_trigger`
+ne sont plus lus et peuvent être supprimés.
+
+### Sensor produit
+
+`sensor.cumulus_automation`, attributs principaux : `rule` (règle décisive),
+`decision_path`, `plans` (seuil, énergie, part réseau prévue, échéance de
+chaque besoin), `lead_plan`, `lead_threshold_w`, `planned_slots` (créneaux du
+besoin qui mène), `surplus_avg_w`, `base_profile` (24 valeurs),
+`solcast_bias_today` / `_long`, `decay_c_per_h`, `efficiency` /
+`efficiency_source`, `heat_kwh_today`, `solar_share_today`,
+`legionella_deadline`, plus les températures, cibles et mesures habituelles.
+
+Notifications : sonde HS (≥ 2 h), anti-légionelle bloquée par le thermostat,
+Solcast inexploitable (≥ 12 h).
+
+## Carte cumulus
+
+- **Hero** : icône et titre selon la règle décisive du flow (désactivé, pause
+  manuelle, légionelle, minimum garanti, chauffe solaire, stockage gratuit,
+  attente du soleil, solaire amont, cible atteinte…). Pulsation pendant une
+  chauffe.
+- **Bande stratégie** : le besoin qui mène, son seuil, la part réseau prévue et
+  l'heure du premier créneau ; dépliée, le chemin de décision du flow puis le
+  détail de chaque plan et des valeurs apprises.
+- **Cadran 270°** de la température de l'eau, repères `min_temp`, `stop_temp`,
+  `reach_for` et 60 °C quand l'anti-légionelle est due.
+- **Courbe Solcast** du jour et de demain, **créneaux retenus par le plan** en
+  bandes vertes (le créneau en cours plus soutenu), curseur « maintenant ».
+- **Pastilles** : production, surplus, jours depuis le dernier 60 °C, ballon
+  solaire amont, **part solaire de la chauffe du jour**, thermostat coupé.
+
+La carte reste compatible avec l'ancien flow : en l'absence de `rule`, elle
+reprend l'affichage par fenêtre et seuils fixes.
+
+## Import dans Node-RED
+
+Les deux fichiers sont **générés** depuis `nodered/` (`node tools/build-flows.js`) :
+chaque nœud `function` y a son propre fichier source, rejoué tel quel par les
+simulations. Ne pas éditer les JSON à la main.
+
+### Mise à jour depuis une version à seuils fixes ou à paliers
+
+1. Supprimer l'onglet existant (onglet → menu → *Delete*), **sans** toucher au
+   nœud serveur Home Assistant ni aux configurations de sensor. Un import
+   « Replace » sans suppression laisserait les anciens nœuds orphelins dans
+   l'onglet.
+2. Importer (menu ≡ → *Import*). Node-RED signale les nœuds de configuration
+   déjà présents (serveur, configuration du sensor) : **ne pas remplacer le
+   nœud serveur**, qui porte le jeton d'accès ; la configuration du sensor peut
+   être remplacée, elle est identique.
+3. *Deploy*.
+
+Les identifiants des onglets et des sensors sont conservés : les entités
+`sensor.cumulus_automation` et `sensor.clim_automation` restent les mêmes, et le
+contexte persistant (dernier 60 °C, détection manuelle) est repris. Les valeurs
+apprises démarrent de leurs défauts et convergent en quelques jours.
+
+### Ordre et dépendances
+
+**Le flow cumulus (`flows.json`) s'importe en premier.** `flows-clim.json` en
+dépend deux fois : il lit `sensor.cumulus_automation`, et il **réutilise son
+nœud serveur Home Assistant** (`1a7a75b5.c29f2a`) au lieu d'en redéfinir un. Le
+flow cumulus lit à son tour `sensor.clim_automation` s'il existe (absent : la
+clim compte pour 0 W).
+
+Nœud serveur non redéfini **volontairement** : le redéfinir provoquait une
+collision d'identifiants, Node-RED renumérotait alors tout le flow et créait un
+**second nœud serveur sans jeton d'accès**, rendant invalides tous les nœuds qui
+le référencent — `sensor.clim_automation` en tête. Symptôme : erreur de
+validation sur ce nœud alors que sa configuration paraît correcte, et un
+doublon « Home Assistant » dans la barre latérale *Nœuds de configuration*.
+
+Serveur Home Assistant portant un autre identifiant que `1a7a75b5.c29f2a` :
+ouvrir n'importe quel nœud du flow, sélectionner le bon serveur, Node-RED
+proposant alors de l'appliquer à tous les nœuds concernés.
+
+## Flow clim (`flows-clim.json`) — routeur solaire
+
+### Principe
+
+Les cinq unités Daikin sont **inverter** : leur puissance varie de 150 à
+1 000 W selon l'écart entre la pièce et la consigne. Plutôt que de les allumer
+par paliers de puissance fixe (800 W supposés, 300 à 600 W mesurés en réalité),
+le flow **module la consigne** pour suivre le surplus, comme un routeur solaire
+module une résistance :
 
 ```
-enabled, desired, current_switch,
-target_temp, min_temp, reach_for, forcage_threshold,
-water_temp, solar_power, potential_surplus,
-anti_injection_active, surplus_trigger,
-legionella_due, legionella_critical, days_since_high_temp,
-solcast_stale, solcast_age_hours, forecast_field,
-window_start, window_end, window_avg_w, in_window, is_forcing,
-window_skipped_reason, tomorrow_mode
+écart = export lissé (60 s) − marge (50 W) + tolérance d'import
 ```
 
-Avec le flow **V3** (juin 2026), attributs supplémentaires exploités par la carte (tous
-optionnels, retour au comportement précédent en leur absence) :
+- **écart > +100 W** : consigne plus profonde de 0,5 °C sur l'unité en marche
+  la plus prioritaire (une fois toutes les 3 min par unité), jusqu'à sa
+  consigne de stockage ; toutes au plus profond, **démarrage** de la pièce
+  suivante si l'écart couvre 60 % de sa puissance apprise, confirmé 3 min.
+- **écart < −100 W** : consigne **relâchée** vers le ralenti (au-delà de la
+  température de la pièce), sur les moins prioritaires d'abord, de 0,5 à 2 °C
+  selon l'écart, toutes les 2 min par unité ; toutes au ralenti et import
+  persistant 5 min, **arrêt** de la moins prioritaire.
+- Unité au ralenti depuis 15 min sans que le surplus la relance : arrêt.
+- Pièce revenue sous sa cible de stockage : arrêt après le min-run.
 
-```
-anti_injection_useful, thermostat_tripped,
-legionella_critical_pending, legionella_blocked,
-manual_hold_active, manual_hold_until,
-degraded_sonde, sonde_down_hours,
-stop_temp, dt_forcing, tank_volume_l,
-effective_trigger
-```
+Le compresseur n'est presque jamais coupé : moins de démarrages, et un surplus
+suivi au plus près (≈ 90 % du surplus consommé, import quasi nul en
+simulation).
 
-Avec le flow **« solaire amont »** (juin 2026), attributs supplémentaires exploités par la carte :
+### Tolérance d'import
 
-```
-solar_upstream_temp, solar_upstream_available,
-solar_covers_target, solar_sufficient_threshold, solar_sufficient_margin
-```
+`input_number.clim_import_allowance` (0 W par défaut) : import réseau toléré
+**tant qu'une pièce pilotée est hors de sa cible de confort**, pour rafraîchir
+une chambre à 27 °C avec un surplus un peu court. Le **stockage** (pièce déjà
+dans sa cible) reste au seul surplus. Remplace l'ancien
+`input_number.clim_surplus_trigger`, qui n'est plus lu.
 
-Pour la courbe Solcast, lecture directe de l'attribut `detailedForecast` du capteur Solcast du jour.
+### Puissance apprise
 
-## Cumulus solaire en amont (préchauffe en série)
+Quand une unité tourne seule sur son disjoncteur, la mesure du groupe est la
+sienne : sa puissance typique est apprise (moyenne sur 30 min), et sert au
+seuil de démarrage. Plusieurs unités sur un groupe : la mesure est partagée au
+prorata de leurs puissances apprises. `CLIM_UNIT_W` (500 W) ne sert qu'au
+départ.
 
-Cumulus **solaire** plombé **en série, en amont** du cumulus électrique
-(eau froide passant d'abord par le ballon solaire, puis par le ballon électrique) :
-chauffage électrique inutile dès fourniture de l'eau à la cible par le ballon
-solaire.
+### Saison sur la prévision
 
-Lecture de la sonde du ballon solaire (`sensor.temp_chauffe_eau_solaire_temperature`)
-par le flow et, à une priorité **inférieure** à l'anti-injection (surplus) et à
-l'anti-légionelle, coupure de l'appoint électrique dès que :
+En mode `auto`, le sens autorisé se décide sur la **prévision du jour**
+(`weather.get_forecasts` toutes les heures sur `CLIM_WEATHER_ENTITY`) : froid si
+le maximum atteint `CLIM_OUTDOOR_COOL_MIN` (24 °C), chaud si le minimum descend
+sous `CLIM_OUTDOOR_HEAT_MAX` (17 °C), les deux en demi-saison (l'écart
+intérieur tranche). Sans prévision : sonde extérieure, puis température de
+l'entité météo, puis l'écart intérieur seul.
 
-```
-temp_cumulus_solaire ≥ cible_effective (reach_for) + marge
-```
+### Cohabitation avec l'usage manuel
 
-- **Marge** (`solar_sufficient_margin`, défaut **3 °C**) pour la
-  stratification du ballon solaire et les pertes en ligne, sans eau tiède
-  au robinet. Réglable via la variable d'environnement Node-RED
-  `SOLAR_SUFFICIENT_MARGIN`.
-- **Anti-injection conservée** : surplus réseau durable, chauffe forcée quand
-  même (stockage de l'énergie gratuite), priorité supérieure. Aucun
-  plafond logiciel : chauffe au-delà de `reach_for` en cas de surplus actif
-  (cumulus en batterie thermique gratuite), jusqu'à coupure du circuit par
-  le thermostat mécanique du ballon lui-même.
-- **Anti-légionelle conservée** : chauffe forcée en cycle critique. Seuil
-  basé sur `reach_for` (relevé à 62 °C en cas de légionelle due), donc pas
-  de court-circuit du cycle par la coupure « solaire amont ».
-- Sonde solaire indisponible : règle non appliquée, retour au comportement
-  habituel du flow.
+- **Propriété** : une unité allumée hors du flow n'est jamais touchée, et sa
+  consommation n'est pas comptée comme récupérable.
+- **Reprise en main** : mode **ou consigne** changés à la main sur une unité
+  pilotée → elle sort du périmètre, pause de 45 min sur cette unité. Le flow
+  mémorise les consignes qu'il envoie pour ne pas confondre sa modulation avec
+  un réglage de l'utilisateur.
+- **Unités partielles** : aucune commande si `hvac_modes` n'expose pas le mode
+  demandé, avec notification.
 
-## Climatisation et chauffage gratuits (`flows-clim.json`)
+### Entités et constantes (onglet Env du flow)
 
-Second flow Node-RED, **indépendant**, pour le pilotage des cinq unités Daikin
-sur le seul surplus solaire, **eau chaude prioritaire**. Import séparé de
-`flows-clim.json` (onglet « Climatisation Solaire »), sans aucune modification
-de `flows.json`.
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `CLIM_UNITS` | les 5 `climate.*` | Liste **ordonnée** des unités, priorité décroissante |
+| `CLIM_UNIT_LABELS` | `Salon,Cuisine,Chambre Tom,…` | Libellés, même ordre |
+| `CLIM_PRIORITY_HELPER` | `input_text.clim_priority_order` | Ordre de service, écrit par la carte |
+| `CLIM_OUTDOOR_SENSOR` | `sensor.exterieur_temperature` | Sonde extérieure, optionnelle |
+| `CLIM_WEATHER_ENTITY` | `weather.forecast_maison` | Prévision journalière (`none` : désactivée) |
+| `CLIM_GROUPS` | 2 disjoncteurs | Groupes (JSON) : disjoncteur, compteur, pièces |
+| `CLIM_GROUP_STANDBY_W` | `5` | Veille d'un disjoncteur, retirée des mesures |
+| `CUMULUS_SENSOR` | `sensor.cumulus_automation` | Sensor du flow eau chaude |
+| `SOLAR_SENSOR` / `GRID_SENSOR` | `sensor.pince_amperemetrique_power_a` / `_b` | Production / échange réseau |
+| `CLIM_UNIT_W` | `500` | Puissance supposée avant apprentissage |
+| `CLIM_EXPORT_MARGIN_W` | `50` | Export visé par la boucle |
+| `CLIM_MAX_UNITS` | `5` | Plafond d'unités simultanées |
+| `CLIM_MIN_RUN_MIN` / `CLIM_MIN_OFF_MIN` | `20` / `15` | Protection compresseur (min) |
+| `CLIM_CONFIRM_MIN` | `3` | Confirmation d'un démarrage (min) |
+| `CLIM_STORE_BAND` | `1.5` | Dépassement de cible pour le stockage (°C) |
+| `CLIM_COOL_FLOOR` / `CLIM_HEAT_CEILING` | `21` / `23` | Bornes absolues de confort (°C) |
+| `CLIM_OUTDOOR_COOL_MIN` / `CLIM_OUTDOOR_HEAT_MAX` | `24` / `17` | Bascule de saison (°C) |
 
-### Carte Lovelace dédiée
+Les nœuds `climate.*` ne fixent aucune entité : la cible est portée par
+`payload.target.entity_id`.
+
+### Helpers Home Assistant
+
+`input_boolean.clim_automation_enabled`, `input_number.clim_target_cool`,
+`input_number.clim_target_heat`, et optionnels :
+`input_number.clim_import_allowance` (0 à 1 500 W),
+`input_select.clim_season_mode` (`auto`, `froid`, `chaud`, `arrêt`),
+`input_text.clim_priority_order` (écrit par le bouton ⇅ de la carte). Tous se
+créent dans **Paramètres → Appareils et services → Entrées**.
+
+### Sensor produit
+
+`sensor.clim_automation`, état lisible (« Rafraîchissement gratuit »,
+« Ralenti (eau chaude prioritaire) », « Démarrage différé »…), attributs
+principaux : `router_action`, `router_detail`, `error_w`, `export_avg_w`,
+`allowance_active`, `recoverable_w` (lu par le flow cumulus),
+`clim_power_total_w`, `cumulus_heating`, `season_basis`, `forecast_today_*`,
+`clim_kwh_today`, `clim_solar_share_today`, `decision_path`, et `units` :
+consigne courante, consigne visée, bornes de modulation (`deep_setpoint` /
+`idle_setpoint`), puissance instantanée et apprise, propriété, temporisations.
+
+Notifications : plus aucune température de pièce (≥ 2 h), unité injoignable
+(≥ 1 h), mode absent de `hvac_modes`, disjoncteur coupé alors que plus de
+500 W partent au réseau.
+
+## Carte clim
 
 `clim-solaire-card.js`, pensée pour `sensor.clim_automation` comme la carte
 cumulus l'est pour son propre sensor.
 
-- **Hero** : état et raison, icône et couleur par priorité — désactivée →
-  import réseau → surplus réservé à l'eau chaude → rafraîchissement / chauffage
-  / confort gratuit → temporisation → disjoncteur coupé → pilotage manuel →
-  sondes muettes → hors saison → confort assuré → veille. Pulsation de l'icône
-  et shimmer de la barre d'accent pendant un cycle actif.
-- **Budget de surplus** : barre empilée **eau chaude / clim / libre**, la somme
-  valant le surplus potentiel. Les **paliers** y sont marqués en pointillés, un
-  par unité finançable, ceux atteints en blanc franc : la raison du nombre
-  d'unités en marche se lit d'un coup d'œil. Cerclée de rouge en cas d'import
-  réseau, avec la mention du disjoncteur hors tension le cas échéant.
-- **Pièces, par priorité** : numéro d'ordre, groupe de disjoncteur, température
-  et cible de stockage, sens demandé, et badge d'état (en marche, veille,
-  manuel, pause, disjoncteur, temporisation restante). Tap sur une ligne pour
-  la fiche de l'unité.
+- **Hero** : état et raison, icône et couleur selon le routeur — désactivée →
+  ralenti (eau chaude prioritaire, ou surplus en baisse) → rafraîchissement /
+  chauffage / confort gratuit → disjoncteur coupé → pilotage manuel → sondes
+  muettes → démarrage en confirmation → hors saison → confort assuré → veille.
+  Pulsation de l'icône pendant un cycle actif.
+- **Budget de surplus** : barre empilée **eau chaude / clim / export**, cerclée
+  de rouge en cas d'import ; légende avec l'**écart** que la boucle corrige et
+  son action en cours (consigne approfondie, relâchée, démarrage…), la
+  tolérance d'import quand elle s'applique, et les disjoncteurs hors tension.
+- **Pièces, par priorité** : numéro d'ordre, groupe, température, **consigne
+  visée et puissance instantanée**, sens demandé, badge d'état (en marche,
+  veille, manuel, pause, disjoncteur, temporisation restante). Tap sur une
+  ligne pour la fiche de l'unité.
 - **Réordonnancement des priorités** : bouton ⇅ dans l'en-tête de la liste, puis
   flèches par pièce. L'ordre est écrit dans `input_text.clim_priority_order` et
-  **repris immédiatement par le flow**, qui est abonné à cette entité. Le premier
-  servi est le dernier délesté. Affichage optimiste pendant la republication du
-  sensor. Le bouton n'apparaît que si le helper existe.
-- **Pastilles** : production, surplus potentiel, réservation eau chaude avec son
-  seuil, consommation mesurée aux disjoncteurs (part hors flow signalée),
-  consommation observée par unité **avec alerte de calibration** si elle
-  s'écarte de plus de 25 % de `CLIM_LOAD_W`, kWh du jour, extérieur.
-- **Chemin de décision** (bouton ℹ de la bande budget) : les 6 priorités du
-  flow, règles passées ✓, règle décisive →, règles court-circuitées grisées.
+  **repris immédiatement par le flow**. Le premier servi est le dernier relâché.
+  Le bouton n'apparaît que si le helper existe.
+- **Pastilles** : production, consommation des unités (part pilotée à la main
+  signalée), kWh du jour et leur part solaire, température extérieure et sa
+  source, prévision du jour.
+- **Chemin de décision** (bouton ℹ de la bande budget), publié par le flow.
 - **Réglages** repliables : automatisation, mode saison, cibles froid et chaud
-  (avec leur cible de stockage en sous-titre), seuil par unité. Valeur des
+  (avec leur cible de stockage en sous-titre), tolérance d'import. Valeur des
   sliders envoyée au relâché. Couper l'automatisation demande confirmation.
+
+La carte reste compatible avec l'ancien flow à paliers (en l'absence de
+`router_action`).
 
 ```yaml
 type: custom:clim-solaire-card
@@ -140,7 +373,7 @@ entity: sensor.clim_automation
 | `season` | select | `input_select.clim_season_mode` (optionnel) |
 | `target_cool` | slider | `input_number.clim_target_cool` |
 | `target_heat` | slider | `input_number.clim_target_heat` |
-| `surplus_trigger` | slider | `input_number.clim_surplus_trigger` (optionnel) |
+| `import_allowance` | slider | `input_number.clim_import_allowance` (optionnel) |
 
 Éditeur visuel disponible (sélecteurs d'entités, champ vidé = ligne masquée),
 les helpers optionnels absents masquant simplement leur ligne. Chaque helper
@@ -152,298 +385,9 @@ accepte aussi l'équivalent non `input_*` : `switch`, `select`, `number`. Exempl
 > ressource, gérée par HACS**, aucune déclaration manuelle. Les deux cartes
 > apparaissent ensuite dans le sélecteur.
 
-### Import dans Node-RED
+## Débogage
 
-**Prérequis : le flow « Cumulus Solaire V3 » (`flows.json`) doit être déployé.**
-`flows-clim.json` en dépend deux fois : il lit `sensor.cumulus_automation`, et
-il **réutilise son nœud serveur Home Assistant** (`1a7a75b5.c29f2a`) au lieu
-d'en redéfinir un.
-
-Import par **menu ≡ → Import → sélection du fichier `flows-clim.json`**, puis
-Deploy. Aucune boîte de dialogue de conflit ne doit apparaître : le fichier ne
-contient aucun identifiant déjà présent.
-
-> Si Node-RED propose « Import copy » / « Replace », c'est qu'un onglet
-> « Climatisation Solaire » d'une tentative précédente traîne encore. Le
-> supprimer d'abord (onglet → menu → Delete), puis réimporter.
-
-Nœud serveur non redéfini **volontairement** : le redéfinir provoquait une
-collision d'identifiants, Node-RED renumérotait alors tout le flow et créait un
-**second nœud serveur sans jeton d'accès**, rendant invalides tous les nœuds qui
-le référencent — `sensor.clim_automation` en tête. Symptôme : erreur de
-validation sur ce nœud alors que sa configuration paraît correcte, et un
-doublon « Home Assistant » dans la barre latérale *Nœuds de configuration*.
-
-Serveur Home Assistant portant un autre identifiant que `1a7a75b5.c29f2a` :
-ouvrir n'importe quel nœud du flow, sélectionner le bon serveur, Node-RED
-proposant alors de l'appliquer à tous les nœuds concernés.
-
-### Priorité à l'eau chaude, jusqu'à la cible du cumulus
-
-Aucun couplage direct entre les deux flows : lecture de
-`sensor.cumulus_automation` par le flow clim, qui en déduit la part du surplus
-à laisser au cumulus. L'eau chaude garde la priorité **jusqu'à la cible du flow
-cumulus** (`reach_for`), c'est-à-dire la température qu'il cherche réellement à
-atteindre. Elle est relevée d'elle-même à 62 °C pendant un cycle anti-légionelle
-dû : la priorité suit, sans réglage.
-
-Suivre la cible plutôt qu'un seuil fixe évite un piège : réserver jusqu'à une
-température que le ballon **n'atteint jamais** (thermostat mécanique réglé plus
-bas, par exemple) gèlerait la réservation en permanence et le confort gratuit ne
-tournerait jamais. `HOT_WATER_PRIORITY_TEMP` permet malgré tout d'imposer un
-seuil fixe, à ne retenir que s'il est réellement atteignable ; `0` (défaut) suit
-la cible. L'attribut `hot_water_priority_temp` indique le seuil appliqué, et
-`hot_water_priority_follows_target` s'il est asservi ou forcé.
-
-| Situation du cumulus | Réservation |
-|---|---|
-| Déjà en chauffe (`cumulus_power ≥ 100 W`) | **0 W** — consommation déjà déduite du surplus mesuré au compteur |
-| Commandé ON, anti-injection, anti-légionelle en attente | **`CUMULUS_LOAD_W`** — démarrage imminent |
-| Eau sous la cible (`water_temp < reach_for`) | **`CUMULUS_LOAD_W`** — priorité eau chaude |
-| Eau à la cible, ou cible couverte par le cumulus solaire amont | **0 W** — surplus libéré |
-| Thermostat mécanique ouvert (`thermostat_tripped`) | **0 W** — aucune consommation possible, surplus inutilisable |
-| Automatisation cumulus désactivée, ou cumulus en pause manuelle | **0 W** — pas de demande |
-| Sensor introuvable, température ou cible illisible | **`CUMULUS_LOAD_W`** — réservation par sécurité |
-
-```
-available_w = (surplus réseau + conso des unités pilotées) − réservation cumulus
-```
-
-La priorité reste effective **en cours de cycle** : dès que le cumulus redemande
-de l'énergie, `available_w` chute et la clim est délestée, au besoin sans
-attendre la temporisation anti court-cycle.
-
-### Allocation par paliers, une unité à la fois
-
-Un palier = `CLIM_LOAD_W` (800 W) de surplus disponible. Les unités sont
-servies dans l'ordre de `CLIM_UNITS` (priorité décroissante) et délestées dans
-l'ordre inverse, **une seule** ajoutée ou retirée par palier confirmé
-(`CLIM_HYST_MIN`, 5 min) : montée progressive, sans à-coup sur les compresseurs.
-
-| `available_w` | Unités en marche |
-|---|---|
-| ≤ 800 W | aucune |
-| 800 → 1 600 W | Salon |
-| 1 600 → 2 400 W | Salon + Cuisine |
-| 2 400 → 3 200 W | Salon + Cuisine + Chambre Tom |
-
-(seuil de montée strict : `available_w > n × CLIM_LOAD_W` pour passer à
-*n* unités ; seuil de descente à `CLIM_STOP_RATIO` près, soit 75 %.)
-
-Ordre par défaut : Salon → Cuisine → Chambre Tom → Chambre Didier →
-Chambre Marie. Plafond réglable par `CLIM_MAX_UNITS`.
-
-**Ordre réordonnable sans toucher à Node-RED** : le helper
-`input_text.clim_priority_order` (entité configurable par
-`CLIM_PRIORITY_HELPER`) porte l'ordre de service, et la carte sait l'écrire. Le
-flow y est abonné par un trigger, la prise en compte est donc immédiate.
-
-Jetons acceptés, au choix, pour que le helper reste éditable à la main :
-`entity_id` complet, sa partie après `climate.`, ou le libellé de la pièce. Une
-unité absente du helper conserve sa place, à la suite, dans l'ordre de
-`CLIM_UNITS` ; un jeton inconnu est ignoré ; un helper vide, absent ou illisible
-rend l'ordre à `CLIM_UNITS`. L'attribut `priority_order_source` indique lequel
-des deux fait foi.
-
-> Un `input_text` plafonne à 255 caractères. Les cinq unités en occupent 145,
-> préfixe `climate.` retiré par la carte. Au-delà d'une huitaine d'unités, la
-> carte refuse d'écrire plutôt que de tronquer l'ordre.
-
-Le **délestage respecte strictement la priorité** : une unité plus prioritaire
-n'est jamais coupée parce qu'une moins prioritaire est encore retenue par son
-`min-run` (les unités ne démarrant pas ensemble, leurs temporisations
-n'expirent pas ensemble). Le délestage attend, `shed_deferred` le signale, et
-l'unité visée est nommée par `shed_blocked_by`.
-
-### Disjoncteurs intelligents : mesure réelle et alimentation
-
-Les cinq unités sont réparties sur deux disjoncteurs communicants, déclarés en
-JSON dans `CLIM_GROUPS` :
-
-| Groupe | Disjoncteur | Compteur | Pièces |
-|---|---|---|---|
-| Clim Nord | `switch.clim_nord` | `sensor.clim_nord_power` | Salon, Cuisine |
-| Clim Sud | `switch.clim_sud` | `sensor.clim_sud_power` | Chambre Tom, Chambre Didier, Chambre Marie |
-
-Deux apports par rapport à une simple estimation :
-
-- **Consommation récupérable mesurée.** « Récupérable » = ce que le flow rendrait
-  au réseau en éteignant ce qu'il a allumé. La mesure d'un groupe n'est
-  exploitable que si **toutes** ses unités en marche appartiennent au flow ;
-  sinon le compteur agrège du récupérable et du non-récupérable sans permettre
-  de les séparer, et l'estimation `CLIM_LOAD_W` reprend la main pour ce groupe.
-  Source indiquée par `clim_draw_source` (`mesure` / `estimation` / `mixte`).
-  La veille du disjoncteur (`CLIM_GROUP_STANDBY_W`, défaut 5 W) est retirée :
-  elle subsiste après extinction, elle n'est pas récupérable.
-- **État d'alimentation.** Disjoncteur ouvert → unités du groupe écartées avec la
-  cause exacte (« disjoncteur Clim Nord coupé ») au lieu d'un « injoignable »
-  générique, et notification si du surplus reste inexploité. L'autre groupe
-  continue normalement. Le flow **ne commande jamais les disjoncteurs** :
-  couper l'alimentation d'un compresseur en marche n'est pas une façon de
-  moduler une charge.
-
-`CLIM_GROUPS` vide ou invalide : repli complet sur l'estimation par unité,
-aucun disjoncteur supposé coupé.
-
-#### Calibrer `CLIM_LOAD_W`
-
-`CLIM_LOAD_W` est le **coût d'un palier**, c'est-à-dire la consommation prêtée à
-une unité *pas encore démarrée*. Les unités inverter modulant beaucoup (relevé :
-250 W pour une chambre en rafraîchissement proche de sa consigne, contre 800 W
-par défaut), la valeur juste s'observe :
-
-1. laisser tourner un cycle ;
-2. lire l'attribut `observed_draw_per_unit_w` du sensor (mesure des groupes,
-   veille déduite, divisée par le nombre d'unités en marche) ;
-3. reporter le **maximum observé** dans `CLIM_LOAD_W`.
-
-Trop haut, le flow est conservateur et laisse du surplus inexploité ; trop bas,
-il démarre une unité de trop, ce que le garde-fou import réseau corrige en
-2 min. Une fois les unités en marche, le budget s'appuie de toute façon sur la
-mesure et non sur cette estimation.
-
-### Garde-fou import réseau
-
-`available_w > 0` **ne signifie pas** qu'on n'importe rien : c'est le surplus
-qu'on aurait toutes unités du flow arrêtées. Avec 3 unités et 800 W
-disponibles, on tire 1 600 W du réseau. Le seul juge est donc le compteur :
-import réseau confirmé pendant 2 min → délestage d'une unité par minute,
-`min-run` ignoré, jusqu'à l'arrêt de l'import. C'est aussi ce qui rend la
-priorité eau chaude effective **en cours de cycle** : le cumulus qui redémarre
-fait basculer le compteur en import.
-
-### Priorité de la décision
-
-1. **Automatisation désactivée** → aucune commande.
-2. **Unité hors périmètre** (allumée à la main, pause 45 min, injoignable) → jamais touchée.
-3. **Besoin de confort disparu** → libération immédiate, sans attendre le surplus.
-4. **Eau chaude prioritaire** → réservation retirée du surplus.
-5. **Palier de surplus** → ±1 unité par palier confirmé.
-6. **Anti court-cycle par unité** → `CLIM_MIN_RUN_MIN` / `CLIM_MIN_OFF_MIN`.
-
-### Cohabitation avec l'usage manuel
-
-Les deux garde-fous s'appliquent **par unité**, pour que la chambre allumée à
-la main ne bloque pas le salon :
-
-- **Propriété du pilotage** : une unité allumée hors du flow n'est **jamais**
-  coupée par lui (`owned = false`), et sa consommation n'est pas comptée comme
-  récupérable dans le budget (elle ne sera pas rendue).
-- **Pause manuelle** : tout changement de mode non commandé par le flow suspend
-  l'automatisation 45 min **sur cette unité seulement**. Le surplus n'est pas
-  gaspillé pour autant : une autre pièce en demande prend le relais.
-- **Unités partielles** : aucune commande si l'unité n'expose pas le mode
-  demandé (`hvac_modes` sans `cool`/`heat`), avec notification.
-
-### Confort et stockage du gratuit
-
-Cibles communes à la maison (helpers HA), température propre à chaque pièce lue
-sur l'attribut `current_temperature` de l'unité — **aucune sonde externe
-nécessaire**. Dépassement volontaire de la cible (`CLIM_STORE_BAND`, défaut
-1,5 °C) pour stocker le gratuit dans l'inertie du bâtiment, borné par
-`CLIM_COOL_FLOOR` / `CLIM_HEAT_CEILING`. Consigne envoyée à l'unité = cible de
-stockage, son propre thermostat assurant la modulation.
-
-Sens de fonctionnement en mode `auto` : froid au-dessus de
-`CLIM_OUTDOOR_COOL_MIN` (24 °C), chaud en dessous de `CLIM_OUTDOOR_HEAT_MAX`
-(17 °C), rien entre les deux. Sens latché par unité pendant un cycle. Sonde
-extérieure absente (`CLIM_OUTDOOR_SENSOR` vide, cas par défaut) : l'écart
-intérieur tranche seul.
-
-### Entités et constantes (onglet Env du flow)
-
-| Variable | Défaut | Rôle |
-|---|---|---|
-| `CLIM_UNITS` | les 5 `climate.*` | Liste **ordonnée** des unités, priorité décroissante |
-| `CLIM_UNIT_LABELS` | `Salon,Cuisine,Chambre Tom,…` | Libellés d'affichage, même ordre |
-| `CLIM_PRIORITY_HELPER` | `input_text.clim_priority_order` | Helper portant l'ordre de service, écrit par la carte |
-| `CLIM_OUTDOOR_SENSOR` | *(vide)* | Sonde extérieure, optionnelle |
-| `CLIM_GROUPS` | 2 disjoncteurs | Groupes de disjoncteurs (JSON) : disjoncteur, compteur, pièces |
-| `CLIM_GROUP_STANDBY_W` | `5` | Veille d'un disjoncteur, retirée du récupérable |
-| `CUMULUS_SENSOR` | `sensor.cumulus_automation` | Sensor du flow eau chaude |
-| `SOLAR_SENSOR` / `GRID_SENSOR` | `sensor.pince_amperemetrique_power_a` / `_b` | Production solaire / échange réseau |
-| `CLIM_LOAD_W` | `800` | Coût d'un palier, à calibrer sur `observed_draw_per_unit_w` |
-| `CUMULUS_LOAD_W` | `1200` | Puissance du cumulus (montant réservé) |
-| `HOT_WATER_PRIORITY_TEMP` | `0` | Seuil fixe de priorité eau chaude ; `0` suit la cible du cumulus |
-| `CLIM_MAX_UNITS` | `5` | Plafond d'unités simultanées |
-| `CLIM_MIN_RUN_MIN` / `CLIM_MIN_OFF_MIN` | `20` / `15` | Protection compresseur (min) |
-| `CLIM_HYST_MIN` | `5` | Confirmation d'un palier (min) |
-| `CLIM_STOP_RATIO` | `0.75` | Seuil d'arrêt en fraction du seuil de démarrage |
-| `CLIM_STORE_BAND` | `1.5` | Dépassement de cible pour le stockage (°C) |
-| `CLIM_COOL_FLOOR` / `CLIM_HEAT_CEILING` | `21` / `23` | Bornes absolues de confort (°C) |
-| `CLIM_OUTDOOR_COOL_MIN` / `CLIM_OUTDOOR_HEAT_MAX` | `24` / `17` | Bascule de saison en mode auto (°C) |
-
-Les nœuds `climate.*` ne fixent **aucune entité** : la cible est portée par
-`payload.target.entity_id`, une seule liste `CLIM_UNITS` à modifier pour
-changer d'unités. Seuls les triggers « … change » portent les entités en dur,
-pour la réaction instantanée ; le tick d'une minute assure la réévaluation
-dans tous les cas.
-
-### Helpers Home Assistant
-
-```yaml
-input_boolean:
-  clim_automation_enabled:
-    name: Climatisation automatique
-    icon: mdi:air-conditioner
-
-input_number:
-  clim_target_cool:
-    name: Cible rafraîchissement
-    min: 18
-    max: 32
-    step: 0.5
-    unit_of_measurement: "°C"
-  clim_target_heat:
-    name: Cible chauffage
-    min: 12
-    max: 26
-    step: 0.5
-    unit_of_measurement: "°C"
-  clim_surplus_trigger:      # optionnel, défaut CLIM_LOAD_W
-    name: Seuil de surplus par unité
-    min: 0
-    max: 3000
-    step: 50
-    unit_of_measurement: W
-
-input_select:                # optionnel, défaut auto
-  clim_season_mode:
-    name: Mode saison clim
-    options: [auto, froid, chaud, arrêt]
-
-input_text:                  # optionnel, ordre de service des pièces
-  clim_priority_order:
-    name: Ordre de priorité clim
-    max: 255
-    icon: mdi:sort
-```
-
-`clim_priority_order` est écrit par la carte via son bouton ⇅ ; le laisser vide
-conserve l'ordre de `CLIM_UNITS`.
-
-### Sensor produit
-
-`sensor.clim_automation`, état lisible (« Rafraîchissement gratuit », « Veille
-(eau chaude prioritaire) », « Arrêt différé (anti court-cycle) »…) et attributs
-pour le dashboard : `available_w`, `cumulus_reserve_w`,
-`cumulus_reserve_reason`, `hot_water_priority`, `hot_water_priority_temp`,
-`preempted_by_hot_water`, `target_count`, `tier_candidate`, `fundable_units`,
-`grid_importing`, `hard_stop`, `shed_deferred`, `shed_blocked_by`,
-`active_units`, `clim_draw_recoverable`, `clim_draw_source`,
-`clim_power_total_measured`, `observed_draw_per_unit_w`, `clim_kwh_today`, plus
-deux tableaux : `units` (température, groupe, alimentation, mode demandé,
-consigne de stockage, propriété, temporisations restantes) et `groups`
-(disjoncteur, état, puissance mesurée). Exemples de cartes dans
-`dashboard-clim-snippet.yaml`.
-
-Notifications HA : plus aucune température de pièce (≥ 2 h), unité injoignable
-(≥ 1 h), `sensor.cumulus_automation` introuvable, mode demandé absent de
-`hvac_modes`, disjoncteur coupé alors que du surplus reste disponible.
-
-### Débogage
-
-#### Lire le bon signal
+### Lire le bon signal
 
 Deux symptômes visuellement proches, causes sans rapport :
 
@@ -455,7 +399,7 @@ Deux symptômes visuellement proches, causes sans rapport :
 Le second cas ne se corrige pas dans la configuration du nœud : c'est le
 contenu du message qu'il faut regarder.
 
-#### Contrainte des attributs du nœud sensor
+### Contrainte des attributs du nœud sensor
 
 Le nœud `ha-sensor` valide chaque message. Les valeurs d'attribut acceptées
 sont **chaîne, nombre, booléen, objet, tableau** — **jamais `null`**. Un seul
@@ -465,10 +409,10 @@ entité jamais mise à jour, et rien d'autre pour l'expliquer.
 C'est le piège principal ici, les valeurs absentes étant normales (sonde
 extérieure non configurée, aucune unité en marche, unité injoignable). Le nœud
 « Build sensor payload » **retire donc les clés nulles** avant d'émettre : côté
-Home Assistant, un attribut absent vaut « inconnu ». Le scénario 34 de la
-simulation verrouille cette contrainte sur sept situations.
+Home Assistant, un attribut absent vaut « inconnu ». Les deux simulations
+vérifient l'absence de null au premier niveau, sonde HS comprise.
 
-#### Voir passer les messages
+### Voir passer les messages
 
 1. **Barre latérale Debug** (icône insecte). Sélecteur du haut sur
    « all nodes » plutôt que « selected nodes », sinon les erreurs des autres
@@ -485,7 +429,7 @@ simulation verrouille cette contrainte sur sept situations.
    erreurs de module, les piles d'appel et les `node.warn` du flow.
 5. **Console du navigateur** (F12) pour les erreurs propres à l'éditeur.
 
-#### Isoler
+### Isoler
 
 Le flow se coupe proprement en tronçons, chaque nœud `function` étant autonome :
 
@@ -493,42 +437,33 @@ Le flow se coupe proprement en tronçons, chaque nœud `function` étant autonom
   observer un tronçon à la fois.
 - Débrancher le fil vers le nœud sensor : erreurs disparues, le problème est
   dans le payload et non dans la décision.
-- Injecter à la main : un nœud `inject` branché sur « Lire capteurs & unités »
-  déclenche un cycle complet immédiatement, sans attendre le tick d'une minute.
+- Injecter à la main : un nœud `inject` branché sur « Lire capteurs » (ou
+  « Lire capteurs & unités ») déclenche un cycle complet immédiatement, sans attendre le tick d'une minute.
 
-#### Rejouer hors de Home Assistant
+### Rejouer hors de Home Assistant
 
-La simulation exécute les corps réels des nœuds `function` sur un registre
-d'états factice, sans rien déployer :
+Les simulations exécutent les corps réels des nœuds `function` sur un registre
+d'états factice et un modèle physique, sans rien déployer :
 
 ```
+node tests/cumulus-flow-sim.js
 node tests/clim-flow-sim.js
+node tests/coupled-flows-sim.js
+VERBOSE=1 node tests/cumulus-flow-sim.js   # valeurs mesurées à chaque assertion
+ONLY=4 node tests/clim-flow-sim.js         # un seul scénario
 ```
 
-Pour reproduire une situation précise, ajouter un scénario dans
-`tests/clim-flow-sim.js` : `states({ ... })` décrit les entités, `surplusBase`
-l'export disponible avant clim et cumulus, et le compteur réseau se recalcule
-seul à chaque tick. C'est le moyen le plus rapide de vérifier une hypothèse sur
-la décision sans toucher à l'installation.
+Pour reproduire une situation précise, ajouter un scénario : `makeWorld({...})`
+(cumulus) ou `world({...})` (clim) décrivent l'installation, le compteur réseau
+se recalcule seul à chaque tick.
 
-### Simulation
+## Simulations
 
-Harnais exécutant les corps réels des nœuds `function` du flow, sur horloge
-accélérée et registre d'états HA factice, avec bouclage physique du compteur
-réseau (une unité qui démarre réduit l'export, comme sur l'installation) :
-
-```
-node tests/clim-flow-sim.js
-```
-
-33 scénarios, 161 assertions : réservation dans chaque situation du cumulus,
-seuil 60 °C, montée et délestage en paliers, ordre de priorité au délestage,
-garde-fou import réseau, mesure par disjoncteur et repli sur estimation,
-disjoncteur coupé, calibration sur unités inverter à 250 W, pilotage manuel par
-unité, pause 45 min, temporisations compresseur, mode non supporté, unité
-injoignable, stockage, réalignement de consigne, réordonnancement des priorités par le helper (ordre appliqué, jetons variés, helper vide, délestage inversé en cours de route). Les compteurs de groupe font
-partie du bouclage physique du harnais. Toute la décision vivant dans les nœuds
-`function`, le harnais rejoue le pipeline réel sans logique dupliquée.
+| Harnais | Modèle | Couverture |
+|---|---|---|
+| `tests/cumulus-flow-sim.js` | ballon (chauffe, refroidissement, thermostat), production en cloche, consommation de fond | 18 scénarios : attente du pic, chauffe à part solaire partielle, minimum de nuit, report au lendemain, anti-légionelle due et échue, pause manuelle, solaire amont, thermostat ouvert, sonde HS, Solcast absent, priorité sur la clim, apprentissage, biais Solcast, payload, anti court-cycle, erreur de commande |
+| `tests/clim-flow-sim.js` | unités inverter (puissance selon l'écart pièce/consigne), pièces qui dérivent, compteurs de groupe | 18 scénarios : suivi du surplus, approfondir avant de démarrer, nuage, cumulus prioritaire, tolérance d'import, reprise en main par la consigne, disjoncteur, mode absent, ordre du helper, saison sur prévision, puissance apprise, récupérable, min-run, payload, prévision météo, erreur de commande, bilan d'une heure |
+| `tests/coupled-flows-sim.js` | les deux pipelines sur un même compteur, journée complète | priorité eau chaude → confort → stockage, part solaire, nombre de commandes du relais |
 
 ## Installation via HACS (custom repository)
 
@@ -586,11 +521,12 @@ Le fichier généré est versionné, et la CI échoue s'il diverge de ses source
 
 `.github/workflows/ci.yml`, sur chaque push et chaque PR :
 
-- `node tests/clim-flow-sim.js` — 38 scénarios, 199 assertions ;
+- `node tools/build-flows.js --check` — flows à jour avec `nodered/` ;
+- les trois simulations ci-dessus ;
 - `node tools/validate-repo.js` — invariants du dépôt, chacun correspondant à un
   défaut réellement rencontré : **`filename` désignant un `.js` et non une
   archive** (une archive déclarée comme ressource Lovelace cassait les deux
-  cartes), intégrité des deux graphes Node-RED, **absence de collision
+  cartes), flows générés à jour, intégrité des deux graphes Node-RED, **absence de collision
   d'identifiants entre les deux flows** (cause du nœud serveur dupliqué à
   l'import), nœuds `climate` sans entité en dur, cartes enregistrées et
   déclarées, fichier livré contenant bien toutes les cartes et à jour avec
@@ -639,20 +575,18 @@ Champ Solcast affiché (`pv_estimate`, `pv_estimate10`, `pv_estimate90`) aligné
 
 ### Panneau réglages
 
-Panneau « Réglages » (icône ⚙ en bas de la carte, repliable) : six contrôles, chacun pilotant un helper HA :
+Panneau « Réglages » (icône ⚙ en bas de la carte, repliable) : cinq contrôles, chacun pilotant un helper HA :
 
 | Clé `controls` | Type | Helper par défaut | Notes |
 |---|---|---|---|
 | `enabled` | toggle | `input_boolean.cumulus_automation_enabled` | Activation/désactivation de l'automatisation entière |
-| `target` | slider | `input_number.cumulus_target_temp` | Cible normale (°C) |
-| `min` | slider | `input_number.cumulus_min_temp` | Seuil bas, déclenchement du forçage (°C) |
-| `solar_trigger` | slider | `input_number.cumulus_solar_trigger` | Seuil de production solaire (W), avec valeur effective affichée si modulée par `tomorrow_mode` |
-| `surplus_trigger` | slider | `input_number.cumulus_surplus_trigger` | Seuil anti-injection (W) |
-| `efficiency` | slider | `input_number.cumulus_efficiency` | Rendement du chauffage (0–1 ou 0–100 %) |
+| `target` | slider | `input_number.cumulus_target_temp` | Cible de confort (°C), atteinte au soleil |
+| `min` | slider | `input_number.cumulus_min_temp` | Minimum garanti (°C), réseau accepté pour le tenir |
+| `efficiency` | slider | `input_number.cumulus_efficiency` | Rendement de départ, rendement appris en sous-titre |
 | `tank` | slider | `input_number.cumulus_tank_volume` | Volume du ballon (L). Optionnel, ligne masquée en l'absence de l'helper. |
 
 Chaque slider avec courte description de son **impact réel** sur la décision
-(ex. « Plancher absolu, avec forçage dans la meilleure fenêtre solaire en dessous »).
+(ex. « Garanti : chauffe au meilleur créneau avant d'y descendre, sur le réseau s'il le faut »).
 
 Lecture automatique de `min`, `max`, `step`, `unit_of_measurement` depuis l'helper HA par les sliders, pas besoin de les redéfinir dans la carte. Valeur envoyée à HA au relâché du curseur uniquement, jamais pendant le glissé.
 
@@ -728,20 +662,19 @@ Palette cohérente pour toutes les couleurs d'état :
 | État | Couleur | Quand |
 |---|---|---|
 | ✋ Pause manuelle | Violet `#8e24aa` | `manual_hold_active = true` |
-| 🛑 Legionella forcée (thermostat suspect) | Rouge `#e53935` | `legionella_blocked = true` (thermostat mécanique probablement coupé avant 62°C, relais forcé quand même) |
-| 🦠 Legionella critique | Rouge `#e53935` | `legionella_critical = true` |
-| ⏳ Legionella en attente | Orange `#fb8c00` | `legionella_critical_pending = true` (chauffe planifiée aux heures creuses) |
-| ⚡ Anti-injection | Vert `#43a047` | `anti_injection_useful = true` (fallback : `anti_injection_active`) |
-| ⚠️ Legionella due | Orange `#fb8c00` | `legionella_due = true` (et eau < cible) |
-| 📡 Solcast périmé | Gris `#757575` | `solcast_stale = true` (sans forçage) |
-| 🔥 Forçage | Orange `#fb8c00` | `is_forcing = true` |
-| 💧 Chauffe | Vert `#43a047` | `desired = on` (autres cas) |
-| ☀️ Solaire amont | Teal `#26a69a` | `solar_covers_target = true` (cumulus solaire fournissant déjà l'eau à la cible) |
-| ✅ Cible atteinte | Bleu `#1e88e5` | `water_temp >= reach_for` |
-| 💤 Veille | Bleu `#1e88e5` | par défaut |
+| 🛑 Légionelle bloquée | Rouge `#e53935` | `legionella_blocked = true` (thermostat mécanique coupant avant 60 °C) |
+| 🦠 Anti-légionelle | Rouge `#e53935` | règle `legionella_overdue` ou `plan_legionella` |
+| 🛡️ Minimum garanti | Orange `#fb8c00` | règle `plan_floor` |
+| 💧 Chauffe solaire | Vert `#43a047` | règle `plan_comfort` |
+| ⚡ Stockage gratuit | Vert foncé `#2e7d32` | règle `plan_storage` |
+| ⚠️ Légionelle due | Orange `#fb8c00` | attente, cycle dû |
+| 📡 Solcast périmé | Gris `#757575` | attente, `solcast_stale = true` |
+| 🌤️ Attente du soleil | Bleu `#1e88e5` | règle `wait` |
+| ☀️ Solaire amont | Teal `#26a69a` | `solar_covers_target = true` |
+| ✅ Cible atteinte | Bleu `#1e88e5` | règle `idle` |
 | 🤖 Désactivée | Gris `#9e9e9e` | `enabled = false` |
 
-Pulsation de l'icône et shimmer de la barre d'accent pendant un état « actif » (anti-injection, Legionella critique, forçage, chauffe).
+Pulsation de l'icône et shimmer de la barre d'accent pendant une chauffe (minimum, légionelle, solaire, stockage).
 
 ## Interaction
 
