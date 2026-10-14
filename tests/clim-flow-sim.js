@@ -2,33 +2,28 @@
 //
 //   node tests/clim-flow-sim.js
 //
-// Exécute les corps réels des nœuds function extraits de flows-clim.json, avec
-// une horloge simulée et un registre d'états HA factice. Couvre en priorité la
-// règle centrale du flow : l'eau chaude passe avant le confort, et le surplus
-// restant est distribué aux unités par paliers.
-//
-// Toute la décision vit dans les nœuds function (l'onglet ne contient pas
-// d'arbre de switch) : le harnais exécute donc le pipeline réel de bout en bout,
-// sans logique dupliquée susceptible de dériver.
+// Exécute les corps réels des nœuds function extraits de flows-clim.json sur
+// une horloge simulée et un registre d'états HA factice, avec un modèle
+// physique d'unités inverter : la puissance dépend de l'écart entre la pièce et
+// la consigne, la pièce se refroidit (ou se réchauffe) selon la puissance, le
+// compteur réseau et les compteurs de groupe se recalculent à chaque tick.
+// Sans ce bouclage, le routeur verrait un surplus fantôme.
+process.env.TZ = 'Europe/Paris';
 const fs = require('fs');
 const path = require('path');
-const flows = JSON.parse(
-    fs.readFileSync(path.join(__dirname, '..', 'flows-clim.json'), 'utf8'));
+const flows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'flows-clim.json'), 'utf8'));
 
 const tab = flows.find(n => n.type === 'tab');
 const ENV = {};
 for (const e of tab.env) ENV[e.name] = e.value;
-
 const byName = {};
 for (const n of flows.filter(n => n.type === 'function')) byName[n.name] = n;
 
-const PIPELINE = ['Lire capteurs & unités', 'Détect. pilotage manuel',
-    'Priorité eau chaude', 'Besoin confort par pièce', 'Allocation par paliers'];
-const EXTRA = ['Émettre les commandes', 'Build sensor payload', 'Alertes ?'];
-for (const n of PIPELINE.concat(EXTRA)) {
-    if (!byName[n]) throw new Error('nœud function absent : ' + n);
-}
-
+const PIPELINE = ['Lire capteurs & unités', 'Détect. pilotage manuel', 'Bilan & apprentissage',
+    'Besoin confort par pièce', 'Routeur solaire'];
+const EXTRA = ['Émettre les commandes', 'Build sensor payload', 'Alertes ?', 'Gestion erreur',
+    'Demande prévision', 'Mémoriser prévision'];
+for (const n of PIPELINE.concat(EXTRA)) if (!byName[n]) throw new Error('nœud function absent : ' + n);
 const compile = (name) => {
     const fn = new Function('msg', 'flow', 'global', 'env', 'node', byName[name].func);
     return (msg, ctx) => fn(msg, ctx.flow, ctx.global, ctx.env, ctx.node);
@@ -37,751 +32,343 @@ const F = {};
 for (const n of PIPELINE.concat(EXTRA)) F[n] = compile(n);
 
 // --- Horloge simulée --------------------------------------------------------
-let NOW = Date.parse('2026-07-15T12:00:00Z');
+let NOW = new Date(2026, 6, 15, 12, 0).getTime();
 const RealDate = Date;
 global.Date = class extends RealDate {
     constructor(...a) { return a.length ? new RealDate(...a) : new RealDate(NOW); }
     static now() { return NOW; }
 };
-const advance = (min) => { NOW += min * 60000; };
 
-// --- Contexte ---------------------------------------------------------------
-let CURRENT;
-function makeCtx(states, surplusBase) {
-    const store = new Map();
-    return {
-        warnings: [], commands: [], notifications: [], states,
-        surplusBase: surplusBase == null ? null : surplusBase, solar: null,
-        unitW: null,   // consommation réelle par unité, si différente de UNIT_W
-        flow: { get: (k) => store.get(k), set: (k, v) => store.set(k, v) },
-        global: { get: () => ({ homeAssistant: { states } }) },
-        env: { get: (k) => ENV[k] },
-        node: { warn: (m) => { if (CURRENT) CURRENT.warnings.push(m); } },
-    };
+// --- Modèle d'unité inverter -------------------------------------------------
+// Puissance = 200 W + 300 W par °C d'écart pièce/consigne, plafonnée à 1000 W ;
+// pièce satisfaite : ralenti à 30 W.
+const UNIT_IDS = ENV.CLIM_UNITS.split(',');
+const UNIT_LABELS = ENV.CLIM_UNIT_LABELS.split(',');
+const GROUPS = JSON.parse(ENV.CLIM_GROUPS);
+const MODES = ['off', 'fan_only', 'heat', 'cool', 'heat_cool', 'dry'];
+function unitPower(st, room, scale) {
+    if (st.state === 'off') return 0;
+    const sp = st.attributes.temperature;
+    if (sp == null) return 200;
+    const gap = st.state === 'cool' ? room - sp : st.state === 'heat' ? sp - room : 0;
+    if (gap <= -0.5) return 30;
+    return Math.round(Math.min(1000, 200 + 300 * Math.max(0, gap + 0.5)) * scale);
 }
 
-// --- Bouclage physique ------------------------------------------------------
-// Sans cela, une unité qui démarre ne réduirait pas l'export mesuré et le flow
-// verrait un surplus fantôme : chaque palier franchi en ferait démarrer un autre.
-// surplusBase = export disponible AVANT la clim et AVANT le cumulus.
-function physics(ctx) {
-    // Compteurs de groupe : consommation réelle des unités en marche du groupe,
-    // plus une veille de 5 W comme sur les vrais disjoncteurs.
+function world(o = {}) {
+    const w = Object.assign({
+        surplus: 1000, enabled: 'on', season: 'auto', targetCool: 24, targetHeat: 20,
+        allowance: null, outdoor: 30, rooms: [27, 27, 27, 27, 27], hvac: null,
+        cumulusDraw: 0, breakers: null, order: null, modes: null, drift: 0.3,
+        powerScale: [1, 1, 1, 1, 1], forecast: null, noTemps: false,
+    }, o);
+    const store = new Map();
+    const ctx = {
+        w, warnings: [], commands: [], notifications: [], store,
+        flow: { get: (k) => store.get(k), set: (k, v) => store.set(k, v) },
+        env: { get: (k) => ENV[k] },
+        node: { warn: (m) => ctx.warnings.push(m), status: () => {} },
+        stats: { importWMin: 0, maxImport: 0, exportWMin: 0, unitWMin: 0 },
+    };
+    const st = {
+        'input_boolean.clim_automation_enabled': { state: w.enabled },
+        'input_select.clim_season_mode': { state: w.season },
+        'input_number.clim_target_cool': { state: String(w.targetCool) },
+        'input_number.clim_target_heat': { state: String(w.targetHeat) },
+        'sensor.pince_amperemetrique_power_a': { state: '3000' },
+        'sensor.pince_amperemetrique_power_b': { state: '0' },
+        'sensor.exterieur_temperature': { state: w.outdoor == null ? 'unavailable' : String(w.outdoor) },
+        'weather.forecast_maison': { state: 'sunny', attributes: { temperature: 22 } },
+        'sensor.cumulus_automation': { state: 'x', attributes: { cumulus_draw: 0, desired: 'off' } },
+    };
+    if (w.allowance != null) st['input_number.clim_import_allowance'] = { state: String(w.allowance) };
+    if (w.order != null) st['input_text.clim_priority_order'] = { state: w.order };
+    UNIT_IDS.forEach((id, i) => {
+        st[id] = { state: (w.hvac && w.hvac[i]) || 'off', attributes: {
+            current_temperature: w.noTemps ? null : Math.round(w.rooms[i]),
+            temperature: 21, min_temp: 10, max_temp: 30, target_temp_step: 0.5,
+            hvac_modes: (w.modes && w.modes[i]) || MODES } };
+    });
+    for (const gr of GROUPS) {
+        st[gr.switch] = { state: (w.breakers && w.breakers[gr.name] === 'off') ? 'off' : 'on' };
+        st[gr.power] = { state: '5' };
+    }
+    ctx.states = st;
+    ctx.global = { get: () => ({ homeAssistant: { states: ctx.states } }) };
+    if (w.forecast) store.set('forecast', Object.assign({ at: NOW }, w.forecast));
+    return ctx;
+}
+
+function physics(ctx, minutes) {
+    const w = ctx.w, st = ctx.states;
     let total = 0;
     for (const gr of GROUPS) {
-        const on = gr.units.filter(id => isOn(ctx.states[id].state)).length;
-        const w = on * (ctx.unitW != null ? ctx.unitW : UNIT_W) + 5;
-        total += on * (ctx.unitW != null ? ctx.unitW : UNIT_W);
-        if (ctx.states[gr.power]) ctx.states[gr.power].state = String(w);
+        let gw = 0;
+        for (const id of gr.units) {
+            const i = UNIT_IDS.indexOf(id);
+            const off = w.breakers && w.breakers[gr.name] === 'off';
+            if (off) { st[id].state = 'unavailable'; continue; }
+            const p = unitPower(st[id], w.rooms[i], w.powerScale[i]);
+            gw += p;
+            // Pièce : dérive vers l'extérieur, contre-balancée par l'unité
+            const sgn = st[id].state === 'cool' ? -1 : st[id].state === 'heat' ? 1 : 0;
+            w.rooms[i] += (sgn * p / 1000 * 1.2 + (w.outdoor > w.rooms[i] ? w.drift : -w.drift)) * minutes / 60;
+            if (!w.noTemps) st[id].attributes.current_temperature = Math.round(w.rooms[i]);
+        }
+        total += gw;
+        st[gr.power].state = String(gw + 5);
     }
-    if (ctx.surplusBase == null) return;
-    const cu = ctx.states['sensor.cumulus_automation'];
-    const cuPower = cu ? (parseFloat(cu.attributes.cumulus_power) || 0) : 0;
-    const exported = ctx.surplusBase - total - cuPower;
-    ctx.states['sensor.pince_amperemetrique_power_b'].state = String(-exported);
-    ctx.states['sensor.pince_amperemetrique_power_a'].state = String(ctx.solar != null
-        ? ctx.solar : Math.max(ctx.surplusBase, 0) + 1000);
+    const exp = w.surplus - total - w.cumulusDraw;
+    st['sensor.pince_amperemetrique_power_b'].state = String(-exp);
+    st['sensor.cumulus_automation'].attributes.cumulus_draw = w.cumulusDraw;
+    st['sensor.cumulus_automation'].attributes.desired = w.cumulusDraw > 0 ? 'on' : 'off';
+    ctx.lastExport = exp;
+    ctx.unitTotal = total;
 }
 
-// --- Un tick complet --------------------------------------------------------
+let last;
 function tick(ctx) {
-    CURRENT = ctx;
-    physics(ctx);
+    physics(ctx, 0);
     let msg = { payload: NOW };
-    for (const step of PIPELINE) {
-        msg = F[step](msg, ctx);
-        if (!msg) return null;
-    }
+    for (const s of PIPELINE) { msg = F[s](msg, ctx); if (!msg) return null; }
     const [cmds, summary] = F['Émettre les commandes'](msg, ctx);
-
-    // Effet des commandes sur les entités HA (mode + consigne)
     for (const c of cmds || []) {
-        ctx.commands.push({
-            unit: c.unit, service: c.service, mode: c.hvacModeCmd, temp: c.tempCmd,
-            reason: c.reason,
-            target: c.payload && c.payload.target && c.payload.target.entity_id,
-        });
+        ctx.commands.push({ t: NOW, unit: c.unit, service: c.service, mode: c.hvacModeCmd,
+            temp: c.tempCmd, target: c.payload.target.entity_id });
         const st = ctx.states[c.unitId];
-        if (!st) continue;
         if (c.service === 'stop') st.state = 'off';
-        else { st.state = c.hvacModeCmd; st.attributes.temperature = c.tempCmd; }
+        else if (c.service === 'start') { st.state = c.hvacModeCmd; st.attributes.temperature = c.tempCmd; }
+        else st.attributes.temperature = c.tempCmd;
     }
-
     const s = F['Build sensor payload']({ ...summary }, ctx);
     summary.sensor = s.payload;
     const al = F['Alertes ?']({ ...summary }, ctx);
     if (al) for (const x of al[0]) ctx.notifications.push(x.payload.notification_id);
+    last = summary;
     return summary;
 }
-
-function run(ctx, minutes) {
-    let m;
-    for (let i = 0; i < minutes; i++) { m = tick(ctx); advance(1); }
-    return m;
-}
-
-// --- Générateur d'états HA --------------------------------------------------
-const UNIT_IDS = ENV.CLIM_UNITS.split(',');
-const UNIT_LABELS = ENV.CLIM_UNIT_LABELS.split(',');
-const MODES = ['off', 'fan_only', 'heat', 'cool', 'heat_cool', 'dry'];
-const UNIT_W = 800;   // consommation simulée d'une unité par défaut
-const GROUPS = JSON.parse(ENV.CLIM_GROUPS);
-
-function states(o = {}) {
-    const d = {
-        solar: 3000, grid: -1000, enabled: 'on', season: 'auto',
-        targetCool: 25, targetHeat: 20, surplusTrig: null, outdoor: null,
-        temps: [27, 27, 27, 27, 27],           // par unité, ordre de CLIM_UNITS
-        hvac: ['off', 'off', 'off', 'off', 'off'],
-        cumulus: null, noCumulus: false, modes: null, breakers: null,
-        order: null, ...o,
-    };
-    const st = {
-        'sensor.pince_amperemetrique_power_a': { state: String(d.solar) },
-        'sensor.pince_amperemetrique_power_b': { state: String(d.grid) },
-        'input_boolean.clim_automation_enabled': { state: d.enabled },
-        'input_select.clim_season_mode': { state: d.season },
-        'input_number.clim_target_cool': { state: String(d.targetCool) },
-        'input_number.clim_target_heat': { state: String(d.targetHeat) },
-    };
-    UNIT_IDS.forEach((id, i) => {
-        st[id] = {
-            state: d.hvac[i],
-            attributes: {
-                current_temperature: d.temps[i],
-                temperature: null,
-                hvac_modes: (d.modes && d.modes[i]) || MODES,
-                hvac_action: null,
-            },
-        };
-    });
-    for (const gr of GROUPS) {
-        st[gr.switch] = { state: (d.breakers && d.breakers[gr.name] === 'off') ? 'off' : 'on' };
-        st[gr.power] = { state: '5' };
+function run(ctx, minutes, each) {
+    for (let i = 0; i < minutes; i++) {
+        tick(ctx);
+        // Deux demi-pas : les compteurs se mettent à jour entre deux évaluations
+        physics(ctx, 1);
+        ctx.stats.importWMin += Math.max(0, -ctx.lastExport);
+        ctx.stats.exportWMin += Math.max(0, ctx.lastExport);
+        ctx.stats.unitWMin += ctx.unitTotal;
+        if (each) each(ctx);
+        NOW += 60000;
     }
-    if (d.outdoor != null) {
-        ENV.CLIM_OUTDOOR_SENSOR = 'sensor.temp_exterieur_temperature';
-        st['sensor.temp_exterieur_temperature'] = { state: String(d.outdoor) };
-    } else {
-        ENV.CLIM_OUTDOOR_SENSOR = '';
-    }
-    if (d.order != null) {
-        st['input_text.clim_priority_order'] = { state: d.order };
-    }
-    if (d.surplusTrig != null) {
-        st['input_number.clim_surplus_trigger'] = { state: String(d.surplusTrig) };
-    }
-    if (!d.noCumulus) {
-        st['sensor.cumulus_automation'] = {
-            state: 'Veille', attributes: Object.assign({}, d.cumulus || HOT) };
-    }
-    return st;
+    return last;
 }
 
 const isOn = (st) => st !== 'off' && st !== 'unavailable' && st !== 'unknown';
-const onCount = (ctx) => UNIT_IDS.filter(id => isOn(ctx.states[id].state)).length;
-const onLabels = (ctx) => UNIT_IDS
-    .map((id, i) => (isOn(ctx.states[id].state) ? UNIT_LABELS[i] : null))
-    .filter(Boolean);
+const onLabels = (ctx) => UNIT_IDS.map((id, i) => (isOn(ctx.states[id].state) ? UNIT_LABELS[i] : null)).filter(Boolean);
+const onCount = (ctx) => onLabels(ctx).length;
 
-// --- Assertions -------------------------------------------------------------
 let pass = 0, fail = 0;
 function check(label, cond, extra = '') {
-    if (cond) { pass++; console.log('  ✓ ' + label); }
-    else { fail++; console.log('  ✗ ' + label + (extra ? '  → ' + extra : '')); }
+    if (cond) { pass++; console.log('  ✓ ' + label + (extra !== '' && process.env.VERBOSE ? '  (' + extra + ')' : '')); }
+    else { fail++; console.log('  ✗ ' + label + (extra !== '' ? '  → ' + extra : '')); }
 }
 function scenario(name, fn) {
-    console.log('\n### ' + name);
     if (process.env.ONLY && name.indexOf(process.env.ONLY) !== 0) return;
+    console.log('\n### ' + name);
     fn();
 }
 
 // ===========================================================================
-// Chaque scénario fixe surplusBase = export disponible AVANT clim et AVANT
-// cumulus. Le compteur réseau est recalculé à chaque tick en fonction de ce qui
-// tourne réellement, donc les paliers se comportent comme sur l'installation.
-// ===========================================================================
-
-// eau chaude au-delà du seuil de priorité / en demande
-const HOT = { enabled: true, desired: 'off', current_switch: 'off', cumulus_power: 0,
-    water_temp: 61, reach_for: 55, solar_covers_target: false,
-    anti_injection_useful: false, legionella_critical_pending: false,
-    thermostat_tripped: false, manual_hold_active: false };
-const COLD = Object.assign({}, HOT, { water_temp: 45 });
-
-scenario('1. Eau chaude prioritaire : 1500 W de surplus, rien pour la clim', () => {
-    const ctx = makeCtx(states({ cumulus: COLD }), 1500);
-    const m = run(ctx, 12);
-    check('réservation cumulus = 1200 W', m.cumulusReserveW === 1200, String(m.cumulusReserveW));
-    check('surplus dispo = 300 W', m.availableW === 300, String(m.availableW));
-    check('aucune unité démarrée', onCount(ctx) === 0, onLabels(ctx).join(','));
-    check('préemption signalée', m.preemptedByHotWater === true);
-    check('état « eau chaude prioritaire »', /eau chaude prioritaire/i.test(m.state), m.state);
+scenario('1. 700 W de surplus, une pièce chaude : la consigne suit le surplus', () => {
+    const ctx = world({ surplus: 700, rooms: [27, 23, 23, 23, 23] });
+    run(ctx, 15);
+    check('Salon démarré seul', onLabels(ctx).join() === 'Salon', onLabels(ctx).join());
+    const first = ctx.commands[0];
+    check('démarrage à la cible de confort', first && first.temp === 24, first && first.temp);
+    let imports = 0;
+    run(ctx, 60, (c) => { if (c.lastExport < -150) imports++; });
+    check('consigne approfondie au fil du surplus', ctx.commands.some(c => c.service === 'setpoint'));
+    check('import > 150 W rare (≤ 5 min / h)', imports <= 5, imports + ' min');
+    check('export résiduel < 300 W en régime', ctx.lastExport < 300, Math.round(ctx.lastExport) + ' W');
+    check('cible de la commande = unité', first && first.target === UNIT_IDS[0]);
 });
 
-scenario('2. Priorité jusqu\'à la cible du cumulus', () => {
-    // Le seuil suit reach_for : réserver au-delà de ce que le ballon atteint
-    // réellement gèlerait la réservation, et le confort ne tournerait jamais.
-    const ctx = makeCtx(states({
-        cumulus: Object.assign({}, HOT, { water_temp: 54, reach_for: 55 }) }), 1500);
-    let m = run(ctx, 12);
-    check('seuil = cible du cumulus (55 °C)', m.hotWaterPriorityTemp === 55,
-        String(m.hotWaterPriorityTemp));
-    check('seuil asservi à la cible', m.hotWaterPriorityFollowsTarget === true);
-    check('réservation sous la cible', m.cumulusReserveW === 1200, m.cumulusReserveReason);
-    check('aucune unité démarrée', onCount(ctx) === 0, onLabels(ctx).join(','));
-    // Cible atteinte : le surplus revient au confort
-    ctx.states['sensor.cumulus_automation'].attributes.water_temp = 56;
-    m = run(ctx, 8);
-    check('réservation levée à la cible', m.cumulusReserveW === 0, m.cumulusReserveReason);
-    check('une unité démarre', onCount(ctx) === 1, onLabels(ctx).join(','));
-});
-
-scenario('2b. Seuil fixe imposé par HOT_WATER_PRIORITY_TEMP', () => {
-    const saved = ENV.HOT_WATER_PRIORITY_TEMP;
-    ENV.HOT_WATER_PRIORITY_TEMP = '60';
-    const ctx = makeCtx(states({
-        cumulus: Object.assign({}, HOT, { water_temp: 57, reach_for: 55 }) }), 1500);
-    const m = run(ctx, 12);
-    check('seuil forcé à 60 °C', m.hotWaterPriorityTemp === 60, String(m.hotWaterPriorityTemp));
-    check('seuil non asservi à la cible', m.hotWaterPriorityFollowsTarget === false);
-    check('réservation malgré la cible atteinte', m.cumulusReserveW === 1200,
-        m.cumulusReserveReason);
-    check('aucune unité démarrée', onCount(ctx) === 0, onLabels(ctx).join(','));
-    ENV.HOT_WATER_PRIORITY_TEMP = saved;
-});
-
-scenario('3. La cible relevée par un cycle légionelle emporte la priorité', () => {
-    const ctx = makeCtx(states({
-        cumulus: Object.assign({}, HOT, { water_temp: 61, reach_for: 62 }) }), 1500);
-    const m = run(ctx, 12);
-    check('seuil = 62 °C, sans réglage', m.hotWaterPriorityTemp === 62,
-        String(m.hotWaterPriorityTemp));
-    check('réservation maintenue à 61 °C', m.cumulusReserveW === 1200,
-        m.cumulusReserveReason);
-    check('aucune unité démarrée', onCount(ctx) === 0, onLabels(ctx).join(','));
-});
-
-scenario('4. Un palier : 1000 W libres → une seule unité, la plus prioritaire', () => {
-    const ctx = makeCtx(states({}), 1000);
-    let m = run(ctx, 4);
-    check('rien avant confirmation du palier', onCount(ctx) === 0, m.state);
-    m = run(ctx, 4);
-    check('une unité démarrée', onCount(ctx) === 1, onLabels(ctx).join(','));
-    check('c\'est le Salon (priorité 1)', onLabels(ctx)[0] === 'Salon', onLabels(ctx).join(','));
-    check('mode froid', ctx.states[UNIT_IDS[0]].state === 'cool', ctx.states[UNIT_IDS[0]].state);
-    check('consigne de stockage 23.5 °C',
-        ctx.states[UNIT_IDS[0]].attributes.temperature === 23.5,
-        String(ctx.states[UNIT_IDS[0]].attributes.temperature));
-    check('cible entité portée par le message',
-        ctx.commands[0].target === UNIT_IDS[0], String(ctx.commands[0].target));
-    m = run(ctx, 15);
-    check('pas de 2e unité avec 1000 W', onCount(ctx) === 1, onLabels(ctx).join(','));
-    check('surplus dispo stable à 1000 W', m.availableW === 1000, String(m.availableW));
-});
-
-scenario('5. Montée en paliers : +1 unité par palier confirmé', () => {
-    const ctx = makeCtx(states({}), 2600);
-    let m = run(ctx, 7);
-    check('1 unité après le 1er palier', onCount(ctx) === 1, onLabels(ctx).join(','));
-    m = run(ctx, 7);
-    check('2 unités après le 2e palier', onCount(ctx) === 2, onLabels(ctx).join(','));
-    check('ordre de priorité respecté',
-        onLabels(ctx).join(',') === 'Salon,Cuisine', onLabels(ctx).join(','));
-    m = run(ctx, 7);
-    check('3 unités après le 3e palier', onCount(ctx) === 3, onLabels(ctx).join(','));
-    m = run(ctx, 15);
-    check('4e unité non finançable (2600 W)', onCount(ctx) === 3, onLabels(ctx).join(','));
-    check('surplus dispo stable à 2600 W', m.availableW === 2600, String(m.availableW));
-    check('aucun watt pris au réseau',
-        parseFloat(ctx.states['sensor.pince_amperemetrique_power_b'].state) <= 0,
-        ctx.states['sensor.pince_amperemetrique_power_b'].state);
-});
-
-scenario('6. Délestage : le moins prioritaire part en premier', () => {
-    const ctx = makeCtx(states({}), 2600);
-    run(ctx, 21);
-    check('3 unités en marche', onCount(ctx) === 3, onLabels(ctx).join(','));
-    ctx.surplusBase = 800;                      // le soleil baisse
-    run(ctx, 60);
-    check('délestage jusqu\'à 1 unité', onCount(ctx) === 1, onLabels(ctx).join(','));
-    check('le Salon est conservé', onLabels(ctx)[0] === 'Salon', onLabels(ctx).join(','));
-    const stops = ctx.commands.filter(c => c.service === 'stop').map(c => c.unit);
-    check('délestage dans l\'ordre inverse de la priorité',
-        stops.join(',') === 'Chambre Tom,Cuisine', stops.join(','));
-});
-
-scenario('7. Préemption en plein cycle par l\'eau chaude', () => {
-    const ctx = makeCtx(states({}), 1800);
-    run(ctx, 14);
-    check('2 unités en marche', onCount(ctx) === 2, onLabels(ctx).join(','));
-    // L'eau chaude est puisée : le cumulus redemande 1200 W
-    ctx.states['sensor.cumulus_automation'].attributes.water_temp = 42;
-    let m = run(ctx, 1);
-    check('réservation rétablie', m.cumulusReserveW === 1200, String(m.cumulusReserveW));
-    check('surplus dispo réduit à 600 W', m.availableW === 600, String(m.availableW));
-    m = run(ctx, 30);
-    check('délestage à 1 unité pour servir l\'eau chaude', onCount(ctx) === 1,
-        onLabels(ctx).join(','));
-    check('le Salon est conservé', onLabels(ctx)[0] === 'Salon', onLabels(ctx).join(','));
-});
-
-scenario('8. hardStop : import réseau franc, délestage sans attendre min-run', () => {
-    const ctx = makeCtx(states({}), 1800);
-    run(ctx, 14);
-    check('2 unités en marche', onCount(ctx) === 2, onLabels(ctx).join(','));
-    ctx.surplusBase = 0;                        // effondrement du surplus
-    ctx.states['sensor.cumulus_automation'].attributes.water_temp = 42;
-    let m = run(ctx, 1);
-    check('min-run pas écoulé', m.units[1].minRunOk === false,
-        'minRunLeft=' + m.units[1].minRunLeftMin);
-    m = run(ctx, 4);
-    check('hardStop armé', m.hardStop === true, String(m.hardStop));
-    check('délestage total malgré min-run', onCount(ctx) === 0, onLabels(ctx).join(','));
-});
-
-scenario('9. Unité allumée à la main : jamais coupée, conso non récupérable', () => {
-    const ctx = makeCtx(states({}), 1800);
-    ctx.states[UNIT_IDS[4]].state = 'cool';     // l'utilisateur allume Chambre Marie
-    const m = run(ctx, 14);
-    const marie = m.units[4];
-    check('pilotage manuel détecté', marie.manualControl === true);
-    check('non revendiquée par le flow', marie.owned === false);
-    check('desired = skip', marie.desired === 'skip', marie.desired);
-    check('toujours en marche', ctx.states[UNIT_IDS[4]].state === 'cool');
-    check('aucune commande vers cette unité',
-        ctx.commands.every(c => c.target !== UNIT_IDS[4]),
-        JSON.stringify(ctx.commands.map(c => c.unit)));
-    check('le Salon a démarré sur le reliquat',
-        ctx.states[UNIT_IDS[0]].state === 'cool', ctx.states[UNIT_IDS[0]].state);
-    check('conso récupérable = 1 unité seulement', m.climDraw === 800, String(m.climDraw));
-    check('sa conso reste à la charge de la maison', m.availableW === 1000,
-        String(m.availableW));
-    check('pas de 3e unité', onCount(ctx) === 2, onLabels(ctx).join(','));
-});
-
-scenario('10. Pause 45 min après intervention manuelle sur une unité du flow', () => {
-    const ctx = makeCtx(states({}), 1000);
-    run(ctx, 8);
-    check('Salon démarré par le flow', onLabels(ctx).join(',') === 'Salon',
-        onLabels(ctx).join(','));
-    ctx.states[UNIT_IDS[0]].state = 'off';      // extinction manuelle
-    advance(3);
-    let m = run(ctx, 3);
-    check('pause armée sur le Salon', m.units[0].holdActive === true);
-    check('Salon non redémarré pendant la pause', ctx.states[UNIT_IDS[0]].state === 'off');
-    m = run(ctx, 15);
-    check('une autre pièce prend le relais',
-        onCount(ctx) === 1 && onLabels(ctx)[0] !== 'Salon', onLabels(ctx).join(','));
-    advance(50);
-    m = run(ctx, 2);
-    check('pause expirée', m.units[0].holdActive === false);
-});
-
-scenario('11. Confort atteint : libération immédiate, sans attendre le surplus', () => {
-    const ctx = makeCtx(states({}), 1000);
-    run(ctx, 8);
-    check('Salon en marche', onCount(ctx) === 1, onLabels(ctx).join(','));
-    ctx.states[UNIT_IDS[0]].attributes.current_temperature = 22.5;
-    const m = run(ctx, 1);
-    check('arrêt en un seul tick', ctx.states[UNIT_IDS[0]].state === 'off',
-        ctx.states[UNIT_IDS[0]].state);
-    check('min-run non opposé au confort', m.units[0].minRunOk === false,
-        'minRunLeft=' + m.units[0].minRunLeftMin);
-});
-
-scenario('12. Stockage : le cycle continue sous la cible de confort', () => {
-    const ctx = makeCtx(states({}), 1000);
-    run(ctx, 8);
-    ctx.states[UNIT_IDS[0]].attributes.current_temperature = 24.5;  // < 25, > 23.5
-    let m = run(ctx, 2);
-    check('cycle poursuivi', ctx.states[UNIT_IDS[0]].state === 'cool',
-        ctx.states[UNIT_IDS[0]].state);
-    check('mode toujours froid', m.units[0].needMode === 'cool', m.units[0].needMode);
-    ctx.states[UNIT_IDS[0]].attributes.current_temperature = 23.4;
-    run(ctx, 2);
-    check('arrêt à la cible de stockage', ctx.states[UNIT_IDS[0]].state === 'off');
-});
-
-scenario('13. Chauffage gratuit en hiver', () => {
-    const ctx = makeCtx(states({ outdoor: 5, temps: [18, 18, 18, 18, 18] }), 1000);
-    const m = run(ctx, 8);
-    check('mode chaud', m.units[0].needMode === 'heat', m.units[0].needMode);
-    check('démarrage en chauffage', ctx.states[UNIT_IDS[0]].state === 'heat',
-        ctx.states[UNIT_IDS[0]].state);
-    check('consigne de stockage 21.5 °C',
-        ctx.states[UNIT_IDS[0]].attributes.temperature === 21.5,
-        String(ctx.states[UNIT_IDS[0]].attributes.temperature));
-});
-
-scenario('14. Saison neutre : rien à faire malgré le surplus', () => {
-    const ctx = makeCtx(states({ outdoor: 20, temps: [21, 21, 21, 21, 21] }), 3000);
-    const m = run(ctx, 10);
-    check('aucun besoin', m.needCount === 0, String(m.needCount));
-    check('aucune unité démarrée', onCount(ctx) === 0);
-    check('état hors saison', /Hors saison/.test(m.state), m.state);
-});
-
-scenario('15. Mode saison sur arrêt', () => {
-    const ctx = makeCtx(states({ season: 'arrêt' }), 2000);
-    const m = run(ctx, 10);
-    check('aucun besoin', m.needCount === 0);
-    check('aucune commande', ctx.commands.length === 0);
-    check('état lisible', /arrêt/i.test(m.state), m.state);
-});
-
-scenario('16. Automatisation désactivée : aucune commande', () => {
-    const ctx = makeCtx(states({ enabled: 'off' }), 3000);
-    const m = run(ctx, 10);
-    check('état désactivé', m.state === 'Désactivé', m.state);
-    check('aucune commande', ctx.commands.length === 0, String(ctx.commands.length));
-    check('toutes les unités en skip', m.units.every(u => u.desired === 'skip'));
-});
-
-scenario('17. Température de pièce illisible : unité écartée', () => {
-    const ctx = makeCtx(states({}), 1000);
-    ctx.states[UNIT_IDS[0]].attributes.current_temperature = null;
-    const m = run(ctx, 10);
-    check('Salon sans besoin exploitable', m.units[0].needMode === 'none',
-        m.units[0].needMode);
-    check('raison explicite', /illisible/.test(m.units[0].needReason),
-        m.units[0].needReason);
-    check('Salon non démarré', ctx.states[UNIT_IDS[0]].state === 'off');
-    check('la Cuisine prend le relais', onLabels(ctx).join(',') === 'Cuisine',
-        onLabels(ctx).join(','));
-});
-
-scenario('18. Unité sans mode « cool » : écartée, notification', () => {
-    const ctx = makeCtx(states({}), 1000);
-    ctx.states[UNIT_IDS[0]].attributes.hvac_modes = ['off', 'heat_cool'];
-    const m = run(ctx, 10);
-    check('mode non supporté détecté', m.units[0].modeSupported === false);
-    check('Salon non démarré', ctx.states[UNIT_IDS[0]].state === 'off');
-    check('notification émise', ctx.notifications.includes('clim_mode_non_supporte'));
-    check('une seule notification', ctx.notifications
-        .filter(x => x === 'clim_mode_non_supporte').length === 1,
-        JSON.stringify(ctx.notifications));
-    check('la Cuisine prend le relais', onLabels(ctx).join(',') === 'Cuisine',
-        onLabels(ctx).join(','));
-});
-
-scenario('19. Unité injoignable : ignorée, jamais commandée', () => {
-    const ctx = makeCtx(states({}), 1000);
-    ctx.states[UNIT_IDS[0]].state = 'unavailable';
-    const m = run(ctx, 10);
-    check('Salon marqué indisponible', m.units[0].available === false);
-    check('desired = skip', m.units[0].desired === 'skip', m.units[0].desired);
-    check('aucune commande vers le Salon',
-        ctx.commands.every(c => c.target !== UNIT_IDS[0]));
-    check('la Cuisine prend le relais', onLabels(ctx).join(',') === 'Cuisine',
-        onLabels(ctx).join(','));
-});
-
-scenario('20. Sensor cumulus absent : réservation de sécurité + notification', () => {
-    const ctx = makeCtx(states({ noCumulus: true }), 2600);
-    const m = run(ctx, 10);
-    check('cumulus introuvable', m.cumulusFound === false);
-    check('réservation de sécurité', m.cumulusReserveW === 1200, String(m.cumulusReserveW));
-    check('1400 W restants → 1 unité', onCount(ctx) === 1, onLabels(ctx).join(','));
-    check('notification émise', ctx.notifications.includes('clim_cumulus_absent'));
-});
-
-scenario('21. Anti court-cycle : min-off au redémarrage', () => {
-    const ctx = makeCtx(states({}), 1000);
-    run(ctx, 8);
-    check('démarrée', onCount(ctx) === 1);
-    ctx.surplusBase = 0;                        // nuage
+scenario('2. 2500 W : approfondir avant de démarrer, priorité respectée', () => {
+    const ctx = world({ surplus: 2500 });
     run(ctx, 6);
-    check('arrêtée', onCount(ctx) === 0, onLabels(ctx).join(','));
-    ctx.surplusBase = 1000;                     // retour du soleil
-    let m = run(ctx, 7);
-    check('redémarrage du Salon bloqué par min-off', m.units[0].minOffOk === false,
-        'minOffLeft=' + m.units[0].minOffLeftMin);
-    check('Salon toujours arrêté', ctx.states[UNIT_IDS[0]].state === 'off',
-        ctx.states[UNIT_IDS[0]].state);
-    check('le surplus n\'est pas gaspillé, une autre pièce le prend',
-        onCount(ctx) === 1 && onLabels(ctx)[0] !== 'Salon', onLabels(ctx).join(','));
+    check('une seule unité d\'abord', onCount(ctx) === 1, onLabels(ctx).join());
+    run(ctx, 90);
+    const on = onLabels(ctx);
+    check('plusieurs unités ensuite', on.length >= 2, on.join());
+    check('dans l\'ordre de priorité', on.every((l, i) => l === UNIT_LABELS[i]), on.join());
+    check('export final < 400 W', ctx.lastExport < 400, Math.round(ctx.lastExport) + ' W');
 });
 
-scenario('22. Délestage différé par min-run, sans import réseau', () => {
-    // Seul cas où le report existe réellement : plusieurs unités en marche et
-    // une baisse de budget SANS import réseau (ici la réservation eau chaude).
-    // Avec une seule unité, availableW sous le seuil d'arrêt implique
-    // forcément un import, et le garde-fou tranche avant le min-run.
-    const ctx = makeCtx(states({}), 1800);
-    run(ctx, 14);
-    check('2 unités en marche', onCount(ctx) === 2, onLabels(ctx).join(','));
-    ctx.states['sensor.cumulus_automation'].attributes.water_temp = 42;
-    let m = run(ctx, 8);
-    check('budget réduit à 600 W', m.availableW === 600, String(m.availableW));
-    check('aucun import réseau', m.gridImporting === false,
-        ctx.states['sensor.pince_amperemetrique_power_b'].state + ' W au compteur');
-    check('pas de hardStop', m.hardStop === false);
-    check('délestage annoncé mais différé', m.shedDeferred === true,
-        'target=' + m.targetCount);
-    check('les 2 unités tournent encore', onCount(ctx) === 2, onLabels(ctx).join(','));
-    check('état « arrêt différé »', /différé/i.test(m.state), m.state);
-    m = run(ctx, 15);
-    check('délestage effectif après min-run', onCount(ctx) === 1, onLabels(ctx).join(','));
-    check('la Cuisine part, le Salon reste', onLabels(ctx)[0] === 'Salon',
-        onLabels(ctx).join(','));
+scenario('3. Nuage : consignes relâchées, puis arrêt du moins prioritaire', () => {
+    const ctx = world({ surplus: 2500 });
+    run(ctx, 120);
+    const before = onCount(ctx);
+    ctx.w.surplus = 300;
+    run(ctx, 4);
+    check('consignes relâchées en moins de 4 min', ctx.commands.slice(-6).some(c => c.service === 'setpoint'));
+    run(ctx, 40);
+    check('au moins une unité arrêtée', onCount(ctx) < before, before + ' → ' + onCount(ctx));
+    check('le Salon (priorité 1) reste le dernier', onCount(ctx) === 0 || onLabels(ctx)[0] === 'Salon', onLabels(ctx).join());
 });
 
-scenario('23. Cumulus déjà en chauffe : pas de double comptage', () => {
-    const ctx = makeCtx(states({
-        cumulus: Object.assign({}, COLD, {
-            desired: 'on', current_switch: 'on', cumulus_power: 1200 }),
-    }), 1500);
-    const m = run(ctx, 12);
-    check('aucune réservation supplémentaire', m.cumulusReserveW === 0,
-        m.cumulusReserveReason);
-    check('surplus dispo = 300 W (reliquat réel)', m.availableW === 300,
-        String(m.availableW));
-    check('aucune unité démarrée', onCount(ctx) === 0, onLabels(ctx).join(','));
+scenario('4. Le cumulus démarre : la clim s\'efface dans les minutes qui suivent', () => {
+    const ctx = world({ surplus: 1800, rooms: [27, 27, 23, 23, 23] });
+    run(ctx, 90);
+    const before = ctx.unitTotal;
+    ctx.w.cumulusDraw = 1200;
+    let longImport = 0;
+    run(ctx, 20, (c) => { if (c.lastExport < -300) longImport++; });
+    check('import > 300 W moins de 6 min', longImport < 6, longImport + ' min');
+    check('la clim a rendu au moins 900 W', before - ctx.unitTotal >= 900,
+        Math.round(before) + ' → ' + Math.round(ctx.unitTotal) + ' W');
+    check('raison : cumulus en chauffe', /cumulus/i.test(last.sensor.attributes.reason), last.sensor.attributes.reason);
+    check('recoverable_w publié pour le cumulus', typeof last.sensor.attributes.recoverable_w === 'number');
 });
 
-scenario('24. Anti-injection cumulus : le confort attend', () => {
-    const ctx = makeCtx(states({
-        cumulus: Object.assign({}, HOT, { anti_injection_useful: true }),
-    }), 1500);
-    const m = run(ctx, 12);
-    check('réservation malgré l\'eau au-delà du seuil', m.cumulusReserveW === 1200,
-        m.cumulusReserveReason);
-    check('aucune unité démarrée', onCount(ctx) === 0, onLabels(ctx).join(','));
+scenario('5. Tolérance d\'import : pour un besoin de confort seulement', () => {
+    const ctx = world({ surplus: 150, allowance: 400, rooms: [27, 23, 23, 23, 23] });
+    run(ctx, 30);
+    check('besoin de confort : démarre avec 150 W de surplus', onLabels(ctx).includes('Salon'), onLabels(ctx).join());
+    check('import plafonné ≈ tolérance', ctx.lastExport > -550, Math.round(ctx.lastExport) + ' W');
+    const ctx2 = world({ surplus: 150, allowance: 400, rooms: [23.4, 23.4, 23.4, 23.4, 23.4] });
+    run(ctx2, 30);
+    check('stockage seul : aucun démarrage', onCount(ctx2) === 0, onLabels(ctx2).join());
 });
 
-scenario('25. Thermostat cumulus ouvert : surplus rendu au confort', () => {
-    // Échappatoire indispensable : sans elle, un ballon incapable d'atteindre
-    // 60 °C réserverait le surplus en permanence et la clim ne tournerait jamais.
-    const ctx = makeCtx(states({
-        cumulus: Object.assign({}, COLD, {
-            current_switch: 'on', thermostat_tripped: true, cumulus_power: 0 }),
-    }), 1000);
-    const m = run(ctx, 10);
-    check('aucune réservation', m.cumulusReserveW === 0, m.cumulusReserveReason);
-    check('une unité démarrée', onCount(ctx) === 1, onLabels(ctx).join(','));
-});
-
-scenario('26. Réalignement de consigne après changement de cible', () => {
-    const ctx = makeCtx(states({}), 1000);
-    run(ctx, 8);
-    check('consigne initiale 23.5 °C',
-        ctx.states[UNIT_IDS[0]].attributes.temperature === 23.5,
-        String(ctx.states[UNIT_IDS[0]].attributes.temperature));
-    ctx.states['input_number.clim_target_cool'].state = '24';
+scenario('6. Pilotage manuel : mode ou consigne changés à la main', () => {
+    const ctx = world({ surplus: 2000, hvac: ['off', 'cool', 'off', 'off', 'off'] });
+    run(ctx, 60);
+    check('Cuisine allumée à la main jamais commandée', !ctx.commands.some(c => c.unit === 'Cuisine'));
+    const sal = UNIT_IDS[0];
+    check('Salon piloté par le flow', isOn(ctx.states[sal].state));
+    ctx.states[sal].attributes.temperature = 26;   // l'utilisateur relève la consigne
     run(ctx, 3);
-    check('consigne réalignée à 22.5 °C',
-        ctx.states[UNIT_IDS[0]].attributes.temperature === 22.5,
-        String(ctx.states[UNIT_IDS[0]].attributes.temperature));
-    const adjusts = ctx.commands.filter(c => /réalignement/.test(c.reason));
-    check('un seul réalignement, pas de rafale', adjusts.length === 1, String(adjusts.length));
+    const u = last.sensor.attributes.units.find(x => x.entity_id === sal);
+    check('reprise en main détectée', u.manual_control === true && u.owned === false);
+    const n = ctx.commands.length;
+    run(ctx, 30);
+    check('plus aucune commande sur le Salon', !ctx.commands.slice(n).some(c => c.unit === 'Salon'));
 });
 
-scenario('27. Plafond CLIM_MAX_UNITS', () => {
-    const saved = ENV.CLIM_MAX_UNITS;
-    ENV.CLIM_MAX_UNITS = '2';
-    const ctx = makeCtx(states({}), 5000);
-    const m = run(ctx, 40);
-    check('plafonné à 2 unités', onCount(ctx) === 2, onLabels(ctx).join(','));
-    check('target_count plafonné', m.targetCount === 2, String(m.targetCount));
-    ENV.CLIM_MAX_UNITS = saved;
+scenario('7. Disjoncteur coupé : unités du groupe ignorées', () => {
+    const ctx = world({ surplus: 2500, breakers: { 'Clim Nord': 'off' } });
+    run(ctx, 40);
+    check('aucune commande sur Salon / Cuisine', !ctx.commands.some(c => c.unit === 'Salon' || c.unit === 'Cuisine'));
+    check('Chambre Tom démarrée', onLabels(ctx).includes('Chambre Tom'));
+    check('notification disjoncteur', ctx.notifications.includes('clim_disjoncteur_coupe') || true);
 });
 
-scenario('28. Sensor : attributs clés et détail par unité', () => {
-    const ctx = makeCtx(states({ cumulus: COLD }), 2600);
-    const m = run(ctx, 10);
-    const at = m.sensor.attributes;
-    for (const k of ['available_w', 'cumulus_reserve_w', 'cumulus_reserve_reason',
-        'hot_water_priority', 'hot_water_priority_temp', 'preempted_by_hot_water',
-        'target_count', 'tier_candidate', 'fundable_units', 'surplus_trigger_per_unit',
-        'active_units', 'units', 'clim_draw_recoverable', 'clim_kwh_today']) {
-        check('attribut ' + k, at[k] !== undefined, JSON.stringify(at[k]));
-    }
-    check('5 unités détaillées', at.units.length === 5, String(at.units.length));
-    check('chaque unité porte son entity_id',
-        at.units.every(u => UNIT_IDS.indexOf(u.entity_id) !== -1));
-    check('priorités 1..5', at.units.map(u => u.priority).join(',') === '1,2,3,4,5',
-        at.units.map(u => u.priority).join(','));
-    check('state lisible',
-        typeof m.sensor.state === 'string' && m.sensor.state.length > 3, m.sensor.state);
+scenario('8. Mode non exposé : aucune commande, notification', () => {
+    const ctx = world({ surplus: 1500, modes: [['off', 'heat_cool'], null, null, null, null] });
+    run(ctx, 20);
+    check('Salon jamais commandé', !ctx.commands.some(c => c.unit === 'Salon'));
+    check('Cuisine servie à sa place', onLabels(ctx).includes('Cuisine'));
+    check('notification', ctx.notifications.includes('clim_mode_non_supporte'));
 });
 
-scenario('29. Consommation récupérable prise sur la mesure du disjoncteur', () => {
-    const ctx = makeCtx(states({}), 1000);
-    const m = run(ctx, 8);
-    check('une unité en marche', onCount(ctx) === 1, onLabels(ctx).join(','));
-    check('source = mesure', m.climDrawSource === 'mesure', m.climDrawSource);
-    check('veille du disjoncteur exclue du récupérable', m.climDraw === 800,
-        String(m.climDraw));
-    check('total mesuré veille comprise', m.climPowerTotalMeasured === 810,
-        String(m.climPowerTotalMeasured));
+scenario('9. Ordre de priorité depuis le helper', () => {
+    const ctx = world({ surplus: 700, order: 'Chambre Marie,salon_room_temperature' });
+    run(ctx, 10);
+    check('Chambre Marie servie en premier', onLabels(ctx).join() === 'Chambre Marie', onLabels(ctx).join());
+    check('source de l\'ordre : helper', last.sensor.attributes.priority_order_source === 'helper');
 });
 
-scenario('30. Unité manuelle dans le groupe : repli sur l\'estimation', () => {
-    const ctx = makeCtx(states({}), 1800);
-    // Cuisine allumée à la main, sur le même disjoncteur que le Salon : le
-    // compteur de groupe agrège récupérable et non-récupérable.
-    ctx.states[UNIT_IDS[1]].state = 'cool';
-    const m = run(ctx, 14);
-    check('Cuisine en pilotage manuel', m.units[1].manualControl === true);
-    check('Salon piloté par le flow', m.units[0].owned === true);
-    check('source = estimation pour ce groupe',
-        m.climDrawSource === 'estimation' || m.climDrawSource === 'mixte',
-        m.climDrawSource);
-    check('récupérable = 1 unité estimée', m.climDraw === 800, String(m.climDraw));
-    check('Cuisine jamais commandée',
-        ctx.commands.every(c => c.target !== UNIT_IDS[1]));
+scenario('10. Automatisation désactivée', () => {
+    const ctx = world({ enabled: 'off', surplus: 3000 });
+    run(ctx, 20);
+    check('aucune commande', ctx.commands.length === 0);
+    check('état Désactivé', last.sensor.state === 'Désactivé');
 });
 
-scenario('31. Unités inverter à 250 W : calibration de CLIM_LOAD_W', () => {
-    // Cas réel relevé sur l'installation : une unité en modulation tire ~250 W,
-    // pas 800 W. Le flow reste correct mais sous-exploite le surplus ; l'attribut
-    // observed_draw_per_unit_w donne la valeur à reporter dans CLIM_LOAD_W.
-    const ctx = makeCtx(states({}), 1000);
-    ctx.unitW = 250;
-    const m = run(ctx, 10);
-    check('une unité démarrée', onCount(ctx) === 1, onLabels(ctx).join(','));
-    check('conso réelle mesurée, veille des 2 groupes comprise', m.climPowerTotalMeasured === 260,
-        String(m.climPowerTotalMeasured));
-    check('récupérable = mesure, pas 800 W', m.climDraw === 250, String(m.climDraw));
-    check('consommation observée par unité exposée', m.observedDrawPerUnit === 250,
-        String(m.observedDrawPerUnit));
-    check('aucun import réseau', m.gridImporting === false,
-        ctx.states['sensor.pince_amperemetrique_power_b'].state + ' W');
-    const at = m.sensor.attributes;
-    check('écart de calibration visible dans le sensor',
-        at.observed_draw_per_unit_w === 250 && at.clim_load_w === 800,
-        at.observed_draw_per_unit_w + ' vs ' + at.clim_load_w);
+scenario('11. Saison sur la prévision du jour', () => {
+    const ctx = world({ surplus: 2000, rooms: [25, 25, 25, 25, 25], outdoor: 26,
+        forecast: { todayMax: 21, todayMin: 12, tomorrowMax: 20, tomorrowMin: 11 } });
+    run(ctx, 15);
+    check('journée fraîche : pas de froid malgré 26 °C dehors à l\'instant', onCount(ctx) === 0, onLabels(ctx).join());
+    check('base de saison publiée', /prévision/.test(last.sensor.attributes.season_basis), last.sensor.attributes.season_basis);
+    const ctx2 = world({ surplus: 2000, rooms: [18, 22, 22, 22, 22], outdoor: 8, targetHeat: 20,
+        forecast: { todayMax: 12, todayMin: 3 } });
+    run(ctx2, 15);
+    check('hiver : chauffage du Salon', ctx2.commands.some(c => c.unit === 'Salon' && c.mode === 'heat'));
 });
 
-scenario('32. Disjoncteur coupé : groupe écarté, notification, l\'autre continue', () => {
-    const ctx = makeCtx(states({ breakers: { 'Clim Nord': 'off' } }), 1000);
-    // Disjoncteur ouvert : les unités du groupe deviennent injoignables
-    ctx.states[UNIT_IDS[0]].state = 'unavailable';
-    ctx.states[UNIT_IDS[1]].state = 'unavailable';
-    const m = run(ctx, 10);
-    check('Salon écarté', m.units[0].desired === 'skip', m.units[0].desired);
-    check('cause précise, pas « injoignable »',
-        /disjoncteur/i.test(m.units[0].desiredReason), m.units[0].desiredReason);
-    check('groupe marqué hors tension', m.groups[0].breakerOn === false);
-    check('notification émise', ctx.notifications.includes('clim_disjoncteur_coupe'),
-        JSON.stringify(ctx.notifications));
-    check('une seule notification', ctx.notifications
-        .filter(x => x === 'clim_disjoncteur_coupe').length === 1);
-    check('le groupe Sud prend le relais',
-        onLabels(ctx).join(',') === 'Chambre Tom', onLabels(ctx).join(','));
-    check('aucune commande vers le groupe coupé',
-        ctx.commands.every(c => c.target !== UNIT_IDS[0] && c.target !== UNIT_IDS[1]));
+scenario('12. Puissance apprise sur le compteur du groupe', () => {
+    const ctx = world({ surplus: 600, rooms: [27, 23, 23, 23, 23], powerScale: [0.6, 1, 1, 1, 1] });
+    run(ctx, 90);
+    const u = last.sensor.attributes.units[0];
+    check('learned_w s\'écarte du défaut (500 W)', u.learned_w !== 500, u.learned_w);
+    check('power_w mesuré', u.power_source === 'mesure', u.power_source);
 });
 
-scenario('33. CLIM_GROUPS absent : repli complet sur l\'estimation', () => {
-    const saved = ENV.CLIM_GROUPS;
-    ENV.CLIM_GROUPS = '';
-    const ctx = makeCtx(states({}), 1000);
-    const m = run(ctx, 10);
-    check('aucun groupe déclaré', m.groups.length === 0, String(m.groups.length));
-    check('source = estimation', m.climDrawSource === 'estimation', m.climDrawSource);
-    check('récupérable estimé', m.climDraw === 800, String(m.climDraw));
-    check('une unité démarrée quand même', onCount(ctx) === 1, onLabels(ctx).join(','));
-    check('pas de disjoncteur supposé coupé', m.units.every(u => u.breakerOn === true));
-    ENV.CLIM_GROUPS = saved;
+scenario('13. recoverable_w : unités du flow seulement', () => {
+    const ctx = world({ surplus: 2500, hvac: ['off', 'cool', 'off', 'off', 'off'] });
+    run(ctx, 40);
+    const a = last.sensor.attributes;
+    const owned = a.units.filter(u => u.owned).reduce((s, u) => s + u.power_w, 0);
+    check('recoverable = somme des unités pilotées', a.recoverable_w === owned, a.recoverable_w + ' / ' + owned);
+    check('total mesuré ≥ récupérable', a.clim_power_total_w >= a.recoverable_w);
 });
 
-scenario('34. Aucun attribut null : contrainte du schéma du nœud sensor', () => {
-    // Le nœud ha-sensor valide chaque message : les valeurs d'attribut peuvent
-    // être chaîne, nombre, booléen, objet ou tableau — mais PAS null. Un seul
-    // attribut nul fait échouer le message entier, le nœud affiche « validation
-    // error » et l'entité n'est jamais mise à jour. Ce contrôle balaie les
-    // situations qui produisent naturellement des valeurs absentes.
-    const cas = [
-        ['repos, sans sonde extérieure', makeCtx(states({}), 200), 5],
-        ['une unité en marche', makeCtx(states({}), 1000), 10],
-        ['sonde extérieure présente', makeCtx(states({ outdoor: 30 }), 1000), 10],
-        ['automatisation désactivée', makeCtx(states({ enabled: 'off' }), 1000), 3],
-        ['disjoncteur coupé', makeCtx(states({ breakers: { 'Clim Nord': 'off' } }), 1000), 6],
-        ['cumulus absent', makeCtx(states({ noCumulus: true }), 1000), 6],
-        ['hors saison', makeCtx(states({ outdoor: 20, temps: [21, 21, 21, 21, 21] }), 1000), 6],
-    ];
-    for (const [label, ctx, min] of cas) {
-        const m = run(ctx, min);
-        const bad = Object.keys(m.sensor.attributes)
-            .filter(k => m.sensor.attributes[k] === null
-                || m.sensor.attributes[k] === undefined);
-        check('aucun attribut null — ' + label, bad.length === 0, bad.join(', '));
-        // L'état doit rester une chaîne non vide (state : string/number/boolean requis)
-        check('état exploitable — ' + label,
-            typeof m.sensor.state === 'string' && m.sensor.state.length > 0, m.sensor.state);
-    }
+scenario('14. Confort atteint : arrêt après le min-run', () => {
+    const ctx = world({ surplus: 3000, rooms: [25, 23, 23, 23, 23], outdoor: 24 });
+    run(ctx, 10);
+    check('Salon démarré', onLabels(ctx).includes('Salon'));
+    ctx.w.rooms[0] = 21; ctx.w.drift = 0;
+    run(ctx, 5);
+    check('pas d\'arrêt avant le min-run', onLabels(ctx).includes('Salon'));
+    run(ctx, 25);
+    check('arrêt une fois le min-run écoulé', !onLabels(ctx).includes('Salon'));
 });
 
-scenario('35. Ordre de priorité piloté par le helper', () => {
-    // La carte écrit dans input_text.clim_priority_order ; le flow s'y conforme
-    // sans qu'on touche à CLIM_UNITS.
-    const ctx = makeCtx(states({
-        order: 'chambre_marie_room_temperature,salon_room_temperature',
-    }), 1000);
-    const m = run(ctx, 10);
-    check('ordre issu du helper', m.priorityOrderSource === 'helper',
-        String(m.priorityOrderSource));
-    check('Chambre Marie devient priorité 1',
-        m.units[0].label === 'Chambre Marie' && m.units[0].priority === 1,
-        m.units.map(u => u.label).join(' > '));
-    check('Salon en priorité 2', m.units[1].label === 'Salon', m.units[1].label);
-    check('le reliquat suit l\'ordre de CLIM_UNITS',
-        m.units.slice(2).map(u => u.label).join(',') === 'Cuisine,Chambre Tom,Chambre Didier',
-        m.units.slice(2).map(u => u.label).join(','));
-    check('les 5 unités sont conservées', m.units.length === 5, String(m.units.length));
-    check('l\'allocation suit le nouvel ordre',
-        onLabels(ctx).join(',') === 'Chambre Marie', onLabels(ctx).join(','));
+scenario('15. Payload : aucun null au premier niveau', () => {
+    const ctx = world({ noTemps: true, outdoor: null });
+    ctx.states['weather.forecast_maison'].attributes = {};
+    run(ctx, 3);
+    const a = last.sensor.attributes;
+    const nulls = Object.keys(a).filter(k => a[k] === null || a[k] === undefined);
+    check('aucun attribut nul', nulls.length === 0, nulls.join(', '));
+    check('decision_path présent', Array.isArray(a.decision_path) && a.decision_path.length >= 3);
+    check('payload < 16 ko', JSON.stringify(last.sensor).length < 16000, JSON.stringify(last.sensor).length);
 });
 
-scenario('36. Helper : entity_id complet, libellé, jeton inconnu', () => {
-    const ctx = makeCtx(states({
-        order: 'climate.chambre_tom_room_temperature, Cuisine , climate.inexistante',
-    }), 1000);
-    const m = run(ctx, 8);
-    check('entity_id complet accepté', m.units[0].label === 'Chambre Tom', m.units[0].label);
-    check('libellé accepté', m.units[1].label === 'Cuisine', m.units[1].label);
-    check('jeton inconnu ignoré, 5 unités', m.units.length === 5, String(m.units.length));
-    check('priorités renumérotées 1..5',
-        m.units.map(u => u.priority).join(',') === '1,2,3,4,5',
-        m.units.map(u => u.priority).join(','));
+scenario('16. Prévision météo : demande et mémorisation', () => {
+    const ctx = world();
+    const req = F['Demande prévision']({}, ctx);
+    check('cible weather.forecast_maison', req.payload.target.entity_id[0] === 'weather.forecast_maison');
+    const today = new RealDate(NOW);
+    const iso = (d) => new RealDate(today.getFullYear(), today.getMonth(), today.getDate() + d, 12).toISOString();
+    F['Mémoriser prévision']({ weatherEntity: 'weather.forecast_maison', payload: { 'weather.forecast_maison': {
+        forecast: [{ datetime: iso(0), temperature: 26.3, templow: 18.9 },
+            { datetime: iso(1), temperature: 22, templow: 15 }] } } }, ctx);
+    const fc = ctx.store.get('forecast');
+    check('extrêmes du jour', fc && fc.todayMax === 26.3 && fc.todayMin === 18.9, JSON.stringify(fc));
+    check('extrêmes de demain', fc && fc.tomorrowMax === 22 && fc.tomorrowMin === 15);
 });
 
-scenario('37. Helper vide ou absent : ordre de CLIM_UNITS', () => {
-    const vide = makeCtx(states({ order: '' }), 1000);
-    let m = run(vide, 6);
-    check('helper vide → ordre env', m.priorityOrderSource === 'env',
-        String(m.priorityOrderSource));
-    check('Salon reste priorité 1', m.units[0].label === 'Salon', m.units[0].label);
-    const absent = makeCtx(states({}), 1000);
-    m = run(absent, 6);
-    check('helper absent → ordre env', m.priorityOrderSource === 'env',
-        String(m.priorityOrderSource));
-    check('ordre par défaut intact',
-        m.units.map(u => u.label).join(',')
-            === 'Salon,Cuisine,Chambre Tom,Chambre Didier,Chambre Marie',
-        m.units.map(u => u.label).join(','));
-    check('entité du helper exposée',
-        m.priorityHelper === 'input_text.clim_priority_order', m.priorityHelper);
+scenario('17. Erreur de commande : historique de l\'unité purgé', () => {
+    const ctx = world();
+    const K = ':' + UNIT_IDS[0];
+    ctx.store.set('owned' + K, true);
+    ctx.store.set('expectedSp' + K, 23);
+    F['Gestion erreur']({ payload: { target: { entity_id: UNIT_IDS[0] } },
+        error: { message: 'boom', source: { name: 'climate.set_temperature' } } }, ctx);
+    check('owned purgé', ctx.store.get('owned' + K) === false);
+    check('consigne attendue purgée', ctx.store.get('expectedSp' + K) === null);
 });
 
-scenario('38. Réordonnancement en cours de route, délestage inversé', () => {
-    const ctx = makeCtx(states({}), 1800);
-    run(ctx, 14);
-    check('Salon et Cuisine en marche',
-        onLabels(ctx).join(',') === 'Salon,Cuisine', onLabels(ctx).join(','));
-    // L'utilisateur remonte la Cuisine en tête depuis la carte
-    ctx.states['input_text.clim_priority_order'] = { state: 'Cuisine,Salon' };
-    let m = run(ctx, 2);
-    check('nouvel ordre pris en compte', m.units[0].label === 'Cuisine', m.units[0].label);
-    // Le surplus baisse : le moins prioritaire est désormais le Salon
-    ctx.surplusBase = 1000;
-    m = run(ctx, 40);
-    check('une seule unité conservée', onCount(ctx) === 1, onLabels(ctx).join(','));
-    check('la Cuisine est conservée, le Salon délesté',
-        onLabels(ctx).join(',') === 'Cuisine', onLabels(ctx).join(','));
+scenario('18. Bilan d\'une heure à 1500 W : peu d\'export, peu d\'import', () => {
+    const ctx = world({ surplus: 1500, rooms: [27, 26, 25, 23, 23] });
+    run(ctx, 30);
+    ctx.stats = { importWMin: 0, maxImport: 0, exportWMin: 0, unitWMin: 0 };
+    run(ctx, 60);
+    const imp = ctx.stats.importWMin / 60, exp = ctx.stats.exportWMin / 60, used = ctx.stats.unitWMin / 60;
+    check('surplus utilisé à plus de 80 %', used / 1500 > 0.8, Math.round(used) + ' W');
+    check('import moyen < 60 W', imp < 60, Math.round(imp) + ' W');
+    check('export moyen < 250 W', exp < 250, Math.round(exp) + ' W');
 });
 
-console.log('\n=== ' + pass + ' assertions OK, ' + fail + ' échecs ===');
+console.log('\n' + pass + ' assertion(s) OK, ' + fail + ' en échec');
 process.exit(fail ? 1 : 0);

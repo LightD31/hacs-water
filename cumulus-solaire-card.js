@@ -2,19 +2,22 @@
  * Cumulus Solaire Card
  *
  * Custom Lovelace card pour le sensor.cumulus_automation produit par
- * le flow Node-RED v5 du cumulus solaire.
+ * le flow Node-RED du cumulus solaire (planification au surplus).
  *
  * Sections :
  *   1. Hero (état + raison + heure)
- *   2. Cadran 270° température eau
- *   3. Courbe Solcast du jour avec fenêtre optimale + curseur "now"
- *   4. Pastilles : production / surplus / legionella / solaire amont
- *   5. Réglages (sliders + toggle, repliable, verrouillés par défaut)
+ *   2. Bande stratégie : plan qui mène la chauffe, seuil, créneaux, valeurs
+ *      apprises, chemin de décision publié par le flow
+ *   3. Cadran 270° température eau
+ *   4. Courbe Solcast avec les créneaux retenus par le plan + curseur "now"
+ *   5. Pastilles : production / surplus / légionelle / solaire amont / part
+ *      solaire du jour
+ *   6. Réglages (sliders + toggle, repliable, verrouillés par défaut)
  *
  * Aucune dépendance hormis ha-icon (fourni par HA).
  */
 
-const VERSION = '1.12.0';
+const VERSION = '2.0.0';
 
 console.info(
   `%c CUMULUS-SOLAIRE-CARD %c v${VERSION} `,
@@ -34,6 +37,9 @@ const MODES = {
   'solcast-stale':       { color: '#757575', icon: 'mdi:cloud-off-outline',         title: 'Solcast périmé',            active: false },
   'forcing':             { color: '#fb8c00', icon: 'mdi:flash',                     title: 'Forçage dans la fenêtre',   active: true  },
   'heating':             { color: '#43a047', icon: 'mdi:water-boiler',              title: 'Chauffe au solaire',        active: true  },
+  'floor':               { color: '#fb8c00', icon: 'mdi:shield-alert-outline',      title: 'Minimum garanti',           active: true  },
+  'storage':             { color: '#2e7d32', icon: 'mdi:transmission-tower-export', title: 'Stockage gratuit',          active: true  },
+  'waiting':             { color: '#1e88e5', icon: 'mdi:weather-sunny-alert',       title: 'Attente du soleil',         active: false },
   'solar-upstream':      { color: '#26a69a', icon: 'mdi:solar-power-variant',       title: 'Eau fournie par le solaire amont', active: false },
   'target-reached':      { color: '#1e88e5', icon: 'mdi:check-circle-outline',      title: 'Cible atteinte',            active: false },
   'idle':                { color: '#1e88e5', icon: 'mdi:water-boiler-auto',         title: 'En attente',                active: false },
@@ -42,22 +48,18 @@ const MODES = {
 const DEFAULT_CONTROLS = {
   enabled:         { entity: 'input_boolean.cumulus_automation_enabled', label: 'Automatisation',     type: 'toggle' },
   target:          { entity: 'input_number.cumulus_target_temp',         label: 'Cible',              type: 'slider', icon: 'mdi:thermometer-check',
-                     desc: "Température visée, en l'absence de report selon la météo de demain" },
+                     desc: "Atteinte au soleil seulement, sur les meilleurs créneaux d'ici demain soir" },
   min:             { entity: 'input_number.cumulus_min_temp',            label: 'Minimum',            type: 'slider', icon: 'mdi:thermometer-low',
-                     desc: "Plancher absolu, avec forçage dans la meilleure fenêtre solaire en dessous" },
-  solar_trigger:   { entity: 'input_number.cumulus_solar_trigger',       label: 'Seuil solaire',      type: 'slider', icon: 'mdi:solar-power',
-                     subtitleAttr: 'effective_trigger', subtitleLabel: 'effectif', subtitleUnit: 'W',
-                     desc: "Production mini pour chauffer en direct" },
-  surplus_trigger: { entity: 'input_number.cumulus_surplus_trigger',     label: 'Seuil anti-injection', type: 'slider', icon: 'mdi:transmission-tower-export',
-                     desc: "Surplus exporté pendant ≥ 5 min, avec forçage de l'allumage" },
+                     desc: "Garanti : chauffe au meilleur créneau avant d'y descendre, sur le réseau s'il le faut" },
   efficiency:      { entity: 'input_number.cumulus_efficiency',          label: 'Rendement',          type: 'slider', icon: 'mdi:percent-circle',
-                     desc: "Conversion électricité vers chaleur utile, avec pilotage des durées et de la cible adaptative" },
+                     subtitleAttr: 'efficiency_learned', subtitleLabel: 'appris', subtitleUnit: '',
+                     desc: "Valeur de départ, remplacée par le rendement appris après trois chauffes" },
   tank:            { entity: 'input_number.cumulus_tank_volume',         label: 'Volume ballon',      type: 'slider', icon: 'mdi:water-boiler',
                      optional: true,
-                     desc: "Capacité thermique du ballon, avec influence sur la cible adaptative et la durée de fenêtre" },
+                     desc: "Capacité thermique du ballon, base du calcul d'énergie à fournir" },
 };
 
-const CONTROL_ORDER = ['enabled', 'target', 'min', 'solar_trigger', 'surplus_trigger', 'efficiency', 'tank'];
+const CONTROL_ORDER = ['enabled', 'target', 'min', 'efficiency', 'tank'];
 
 class CumulusSolaireCard extends HTMLElement {
   static getStubConfig() {
@@ -197,6 +199,7 @@ class CumulusSolaireCard extends HTMLElement {
                 </linearGradient>
               </defs>
               <rect id="forecastWindow"></rect>
+              <g id="forecastSlots"></g>
               <path id="forecastBand"></path>
               <path id="forecastArea"></path>
               <path id="forecastLine"></path>
@@ -208,6 +211,7 @@ class CumulusSolaireCard extends HTMLElement {
               <span class="forecast-max" id="forecastTomorrowMax"></span>
             </div>
             <svg id="forecastTomorrowSvg" viewBox="0 0 400 80" preserveAspectRatio="none" style="display:none">
+              <g id="forecastTomorrowSlots"></g>
               <path id="forecastTomorrowBand"></path>
               <path id="forecastTomorrowArea"></path>
               <path id="forecastTomorrowLine"></path>
@@ -249,6 +253,8 @@ class CumulusSolaireCard extends HTMLElement {
       dialTemp:     this.shadowRoot.querySelector('#dialTemp'),
       dialTarget:   this.shadowRoot.querySelector('#dialTarget'),
       forecastWindow: this.shadowRoot.querySelector('#forecastWindow'),
+      forecastSlots:  this.shadowRoot.querySelector('#forecastSlots'),
+      forecastTomorrowSlots: this.shadowRoot.querySelector('#forecastTomorrowSlots'),
       forecastBand:   this.shadowRoot.querySelector('#forecastBand'),
       forecastArea:   this.shadowRoot.querySelector('#forecastArea'),
       forecastLine:   this.shadowRoot.querySelector('#forecastLine'),
@@ -473,6 +479,11 @@ class CumulusSolaireCard extends HTMLElement {
   // ---------- Strategy strip ----------
 
   _renderStrategy(a) {
+    if (a.rule !== undefined) {
+      const p = this._planStrategy(a);
+      this._applyStrategy(a, p.icon, p.why, p.accent, p.pills, p.rows);
+      return;
+    }
     const mode = a.tomorrow_mode;
 
     let icon = 'mdi:strategy';
@@ -523,14 +534,6 @@ class CumulusSolaireCard extends HTMLElement {
     } else {
       icon = 'mdi:strategy';
       why = 'Stratégie standard';
-    }
-
-    this._el.strategyIcon.setAttribute('icon', icon);
-    this._el.strategyWhyText.textContent = why;
-    if (accentVar) {
-      this._el.strategy.style.setProperty('--strat-accent', accentVar);
-    } else {
-      this._el.strategy.style.removeProperty('--strat-accent');
     }
 
     // --- Influence pills ---
@@ -610,17 +613,6 @@ class CumulusSolaireCard extends HTMLElement {
       tone: winTone,
     });
 
-    this._el.strategyPills.innerHTML = pills.map(p => `
-      <div class="strat-pill tone-${p.tone}">
-        <ha-icon icon="${p.icon}"></ha-icon>
-        <div class="strat-pill-text">
-          <div class="strat-pill-l">${this._escape(p.label)}</div>
-          <div class="strat-pill-v">${this._escape(p.value)}</div>
-          ${p.sub ? `<div class="strat-pill-s">${this._escape(p.sub)}</div>` : ''}
-        </div>
-      </div>
-    `).join('');
-
     // --- Detail (expandable) ---
     const fmtPct = (v) => Math.round(Number(v) * 100) + '%';
     const rows = [];
@@ -635,6 +627,29 @@ class CumulusSolaireCard extends HTMLElement {
       const t = new Date(a.manual_hold_until);
       rows.push(['Reprise auto', `${String(t.getHours()).padStart(2,'0')}h${String(t.getMinutes()).padStart(2,'0')}`]);
     }
+    this._applyStrategy(a, icon, why, accentVar, pills, rows);
+  }
+
+  _applyStrategy(a, icon, why, accentVar, pills, rows) {
+    this._el.strategyIcon.setAttribute('icon', icon);
+    this._el.strategyWhyText.textContent = why;
+    if (accentVar) {
+      this._el.strategy.style.setProperty('--strat-accent', accentVar);
+    } else {
+      this._el.strategy.style.removeProperty('--strat-accent');
+    }
+
+    this._el.strategyPills.innerHTML = pills.map(p => `
+      <div class="strat-pill tone-${p.tone}">
+        <ha-icon icon="${p.icon}"></ha-icon>
+        <div class="strat-pill-text">
+          <div class="strat-pill-l">${this._escape(p.label)}</div>
+          <div class="strat-pill-v">${this._escape(p.value)}</div>
+          ${p.sub ? `<div class="strat-pill-s">${this._escape(p.sub)}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+
     const ladder = this._decisionLadder(a);
     const ladderHtml = `
       <div class="ladder">
@@ -654,11 +669,104 @@ class CumulusSolaireCard extends HTMLElement {
   }
 
   /**
+   * Bande stratégie du flow v4 : le plan qui mène la chauffe, son seuil, ses
+   * créneaux, et ce que le flow a appris de l'installation.
+   */
+  _planStrategy(a) {
+    const hhmm = (iso) => {
+      const d = new Date(iso);
+      return `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+    const plans = Array.isArray(a.plans) ? a.plans : [];
+    const lead = plans.find(p => p.id === a.lead_plan) || null;
+    let icon = 'mdi:chart-timeline-variant', accent = null, why;
+    if (a.manual_hold_active) {
+      icon = 'mdi:hand-back-right'; accent = '#8e24aa';
+      why = 'Commande manuelle détectée, automatisation en pause';
+    } else if (a.legionella_blocked) {
+      icon = 'mdi:alert-octagon-outline'; accent = '#e53935';
+      why = 'Anti-légionelle bloquée : le thermostat mécanique coupe avant 60 °C';
+    } else if (a.degraded_sonde) {
+      icon = 'mdi:thermometer-off'; accent = '#e53935';
+      why = 'Sonde HS : seul le surplus quasi gratuit chauffe l\'eau';
+    } else if (a.legionella_critical) {
+      icon = 'mdi:bacteria'; accent = '#e53935';
+      why = 'Cycle anti-légionelle échu, chauffe immédiate';
+    } else if (a.solar_covers_target === true && a.desired !== 'on') {
+      icon = 'mdi:solar-power-variant'; accent = '#26a69a';
+      why = `Ballon solaire amont à ${Math.round(a.solar_upstream_temp)} °C, appoint inutile`;
+    } else if (!lead) {
+      icon = 'mdi:check-circle-outline'; accent = '#43a047';
+      why = 'Aucun besoin : seul le surplus quasi gratuit est stocké';
+    } else {
+      const label = { floor: 'Minimum garanti', legionella: 'Anti-légionelle', comfort: 'Cible' }[lead.id] || lead.label;
+      if (lead.threshold_w <= 0) {
+        icon = 'mdi:flash'; accent = '#fb8c00';
+        why = `${label} : plus de meilleur créneau avant l'échéance`;
+      } else {
+        icon = lead.id === 'comfort' ? 'mdi:weather-sunny' : 'mdi:calendar-clock';
+        accent = lead.id === 'comfort' ? '#43a047' : '#fb8c00';
+        const dl = lead.deadline ? new Date(lead.deadline) : null;
+        const sameDay = dl && dl.toDateString() === new Date().toDateString();
+        why = `${label} : ${lead.slot_count} créneau(x) au meilleur soleil d'ici `
+          + (dl ? `${sameDay ? '' : 'demain '}${hhmm(lead.deadline)}` : 'demain soir');
+      }
+    }
+
+    const pills = [];
+    if (a.reach_for != null) {
+      const up = a.target_temp != null && a.reach_for - a.target_temp > 0.1;
+      pills.push({ icon: 'mdi:thermometer-check', label: 'Cible', value: `${Math.round(a.reach_for)}°C`,
+        sub: up ? 'anti-légionelle' : (a.need_kwh > 0 ? `${Number(a.need_kwh).toFixed(1)} kWh` : 'atteinte'),
+        tone: up ? 'up' : 'neutral' });
+    }
+    if (lead) {
+      pills.push({ icon: 'mdi:solar-power', label: 'Seuil',
+        value: lead.threshold_w > 0 ? `${Math.round(lead.threshold_w)} W` : 'immédiat',
+        sub: `surplus ${Math.round(a.surplus_avg_w ?? 0)} W`,
+        tone: a.desired === 'on' ? 'active' : 'neutral' });
+      const first = Array.isArray(a.planned_slots) && a.planned_slots.length ? a.planned_slots[0] : null;
+      pills.push({ icon: 'mdi:clock-outline', label: 'Créneaux',
+        value: first ? `dès ${hhmm(first)}` : '—',
+        sub: lead.grid_kwh > 0.05 ? `${Number(lead.grid_kwh).toFixed(1)} kWh réseau` : 'tout solaire',
+        tone: lead.grid_kwh > 0.05 ? 'down' : 'neutral' });
+    } else {
+      pills.push({ icon: 'mdi:transmission-tower-export', label: 'Stockage',
+        value: `${Math.round(a.cumulus_load_w * 0.9 || 1080)} W`, sub: 'surplus exigé', tone: 'neutral' });
+    }
+
+    const rows = [];
+    for (const p of plans) {
+      if (p.id === 'storage') continue;
+      rows.push([`Plan ${p.label.toLowerCase()}`,
+        `${p.threshold_w > 0 ? Math.round(p.threshold_w) + ' W' : 'immédiat'} · ${Number(p.need_kwh || 0).toFixed(1)} kWh`
+        + (p.deadline ? ` · avant ${new Date(p.deadline).toDateString() === new Date().toDateString() ? '' : 'demain '}${hhmm(p.deadline)}` : '')]);
+    }
+    if (a.base_load_w != null) rows.push(['Consommation de fond', `${Math.round(a.base_load_w)} W`]);
+    if (a.solcast_bias_today != null) rows.push(['Biais Solcast', `×${Number(a.solcast_bias_today).toFixed(2)} aujourd'hui · ×${Number(a.solcast_bias_long).toFixed(2)} demain`]);
+    if (a.decay_c_per_h != null) rows.push(['Refroidissement', `${Number(a.decay_c_per_h).toFixed(2)} °C/h`]);
+    if (a.efficiency != null) rows.push(['Rendement', `${Math.round(a.efficiency * 100)} % (${a.efficiency_source || '?'})`]);
+    if (a.heat_kwh_today != null) rows.push(['Chauffe du jour', `${Number(a.heat_kwh_today).toFixed(1)} kWh`
+      + (a.solar_share_today != null ? ` · ${a.solar_share_today} % solaire` : '')]);
+    if (a.legionella_deadline && a.legionella_due) rows.push(['Échéance légionelle', new Date(a.legionella_deadline).toLocaleString('fr-FR', { weekday: 'short', hour: '2-digit', minute: '2-digit' })]);
+    if (a.manual_hold_until) rows.push(['Reprise auto', hhmm(a.manual_hold_until)]);
+    return { icon, why, accent, pills, rows };
+  }
+
+  /**
    * Reconstruit le chemin de décision du flow (priorités descendantes).
    * La première règle qui "tire" est l'état terminal — les suivantes sont
    * court-circuitées. Tout est dérivé des attributs du sensor.
    */
   _decisionLadder(a) {
+    if (Array.isArray(a.decision_path) && a.decision_path.length) {
+      return a.decision_path.map(s => ({
+        label: s.label,
+        note: s.detail || '',
+        warn: s.id === 'sensor' && s.status === 'hit',
+        status: s.status === 'hit' ? 'fired' : s.status === 'pass' ? 'pass' : 'skip',
+      }));
+    }
     const fmtW = (v) => (v != null && !isNaN(v)) ? `${Math.round(v)} W` : '—';
     const tempOk = a.temp_sensor_available !== false;
     const antiInj = (a.anti_injection_useful !== undefined)
@@ -718,6 +826,24 @@ class CumulusSolaireCard extends HTMLElement {
   _mode(a) {
     if (a.enabled === false) return 'disabled';
     if (a.manual_hold_active === true) return 'manual-hold';
+    // Flow v4 (planification) : la règle décisive est publiée telle quelle.
+    if (a.rule !== undefined) {
+      if (a.legionella_blocked === true) return 'legionella-blocked';
+      switch (a.rule) {
+        case 'switch': return 'sensor-error';
+        case 'legionella_overdue': return 'legionella-critical';
+        case 'plan_legionella': return 'legionella-critical';
+        case 'plan_floor': return 'floor';
+        case 'plan_comfort': return 'heating';
+        case 'plan_storage': return 'storage';
+        case 'sensor': return a.desired === 'on' ? 'storage' : 'sensor-error';
+        case 'idle': return a.solar_covers_target === true ? 'solar-upstream' : 'target-reached';
+        case 'wait':
+          if (a.solcast_stale === true) return 'solcast-stale';
+          if (a.legionella_due === true) return 'legionella-due';
+          return 'waiting';
+      }
+    }
     // Flow v3+ : sonde HS = mode dégradé, le flow continue (solaire/anti-injection),
     // le hero suit donc l'état réel. Ancien flow (pas de degraded_sonde) : état figé.
     if (a.temp_sensor_available === false && a.degraded_sonde === undefined) return 'sensor-error';
@@ -882,6 +1008,7 @@ class CumulusSolaireCard extends HTMLElement {
       this._el.forecastArea.setAttribute('d', '');
     }
 
+    this._drawPlanSlots(this._el.forecastSlots, a, dayStart.getTime(), dayEndMs, tToX, padTop, usableH);
     if (a.window_start && a.window_end) {
       const wsX = tToX(new Date(a.window_start).getTime());
       const weX = tToX(new Date(a.window_end).getTime());
@@ -1008,6 +1135,7 @@ class CumulusSolaireCard extends HTMLElement {
     }
 
     this._el.forecastTomorrowMax.textContent = dataMax > 0.05 ? `max ${this._fmtKw(dataMax)}` : '';
+    this._drawPlanSlots(this._el.forecastTomorrowSlots, a, tStart.getTime(), tEnd, tToX, padTop, usableH);
 
     if (linePath) {
       this._el.forecastTomorrowLine.setAttribute('d', linePath);
@@ -1037,6 +1165,28 @@ class CumulusSolaireCard extends HTMLElement {
       text.textContent = `${h}h`;
       this._el.forecastTomorrowTicks.appendChild(text);
     });
+  }
+
+  /**
+   * Créneaux retenus par le plan du flow (planned_slots), en bandes vertes sur
+   * la courbe Solcast. Le créneau en cours est plus soutenu.
+   */
+  _drawPlanSlots(g, a, t0, t1, tToX, y, h) {
+    while (g.firstChild) g.removeChild(g.firstChild);
+    const SLOT = 30 * 60 * 1000;
+    const now = Date.now();
+    for (const iso of (Array.isArray(a.planned_slots) ? a.planned_slots : [])) {
+      const t = new Date(iso).getTime();
+      if (isNaN(t) || t + SLOT <= t0 || t >= t1) continue;
+      const x0 = tToX(t), x1 = tToX(t + SLOT);
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('x', x0.toFixed(1));
+      r.setAttribute('y', y);
+      r.setAttribute('width', Math.max(1, x1 - x0 - 0.5).toFixed(1));
+      r.setAttribute('height', h);
+      r.setAttribute('class', 'plan-slot' + (now >= t && now < t + SLOT ? ' now' : ''));
+      g.appendChild(r);
+    }
   }
 
   _smoothPath(pts) {
@@ -1121,6 +1271,12 @@ class CumulusSolaireCard extends HTMLElement {
         value: `${Number(a.solar_upstream_temp).toFixed(1)}°`,
         label: 'Solaire amont',
       }] : []),
+      ...(a.solar_share_today != null ? [{
+        icon: 'mdi:white-balance-sunny',
+        color: a.solar_share_today >= 80 ? '#43a047' : a.solar_share_today >= 50 ? '#fb8c00' : '#e53935',
+        value: `${a.solar_share_today} %`,
+        label: `Solaire · ${Number(a.heat_kwh_today || 0).toFixed(1)} kWh`,
+      }] : []),
       ...(a.thermostat_tripped === true ? [{
         icon: 'mdi:thermostat-box',
         color: '#757575',
@@ -1185,7 +1341,9 @@ class CumulusSolaireCard extends HTMLElement {
         const subVal = autoAttrs[info.ctrl.subtitleAttr];
         if (subVal != null && Number(subVal) !== val) {
           const unit = info.ctrl.subtitleUnit || '';
-          info.subEl.textContent = `${info.ctrl.subtitleLabel || ''} ${Math.round(subVal)}${unit ? ' ' + unit : ''}`;
+          const shown = Math.abs(subVal) < 10 && !Number.isInteger(Number(subVal))
+            ? Number(subVal).toFixed(2) : Math.round(subVal);
+          info.subEl.textContent = `${info.ctrl.subtitleLabel || ''} ${shown}${unit ? ' ' + unit : ''}`;
           info.subEl.style.display = '';
         } else {
           info.subEl.style.display = 'none';
@@ -1713,6 +1871,8 @@ class CumulusSolaireCard extends HTMLElement {
       .forecast-stale { color: #e53935; font-weight: 600; }
       .forecast svg { width: 100%; height: 110px; overflow: visible; }
       #forecastWindow { fill: rgba(76,175,80,0.20); transition: opacity 0.4s ease; }
+      .plan-slot { fill: rgba(76,175,80,0.22); }
+      .plan-slot.now { fill: rgba(76,175,80,0.40); }
       #forecastBand   { fill: rgba(255,193,7,0.18); stroke: none; }
       #forecastArea   { fill: url(#csc-area-grad); stroke: none; }
       #forecastLine   { fill: none; stroke: #FFC107; stroke-width: 1.5; }
@@ -1975,8 +2135,6 @@ const CONTROL_LABELS = {
   enabled:         'Automatisation (interrupteur)',
   target:          'Température cible',
   min:             'Température minimum',
-  solar_trigger:   'Seuil déclenchement solaire',
-  surplus_trigger: 'Seuil anti-injection',
   efficiency:      'Rendement',
   tank:            'Volume du ballon (L)',
 };

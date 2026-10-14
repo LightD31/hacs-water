@@ -63,6 +63,18 @@ for (const file of ['flows.json', 'flows-clim.json']) {
     }
 }
 
+// --- 2b. Flows générés depuis nodered/ ---------------------------------------
+section('Flows générés');
+{
+    const { execFileSync } = require('child_process');
+    try {
+        execFileSync(process.execPath, [path.join(root, 'tools/build-flows.js'), '--check'], { stdio: 'pipe' });
+        ok('flows.json et flows-clim.json à jour avec nodered/');
+    } catch (e) {
+        ko('flows désynchronisés : node tools/build-flows.js');
+    }
+}
+
 // --- 3. Pas de collision d'identifiants entre les deux flows ----------------
 // Défaut v1.14.1 : flows-clim.json redéfinissait le nœud serveur avec l'id de
 // flows.json. À l'import, Node-RED renumérotait tout le flow et créait un
