@@ -125,6 +125,23 @@ if (msg.tempAvailable) {
 setF('decayRate', decay);
 msg.decayRate = Math.round(clamp(decay, 0.02, 4) * 1000) / 1000;
 
+// --- Puisage en cours : pente courte sur les 90 dernières minutes ---
+// Le refroidissement appris (≈ 2 jours) lisse un bain ou une douche ; près du
+// minimum, c'est la pente du moment qui dit quand on l'atteindra.
+// Un point par nouvelle mesure de la sonde, remis à zéro par une chauffe.
+const TRAIL_MS = 90 * 60000;
+let trail = getF('tempTrail') || [];
+if (!msg.tempAvailable || msg.heating) trail = [];
+else if (!trail.length || trail[trail.length - 1].t !== msg.tempAt) trail.push({ t: msg.tempAt, temp: msg.temp });
+trail = trail.filter(p => now - p.t <= TRAIL_MS);
+setF('tempTrail', trail);
+msg.drawRate = 0;
+if (trail.length >= 2) {
+    const a = trail[0], b = trail[trail.length - 1];
+    const h = (b.t - a.t) / 3600000;
+    if (h >= 0.25) msg.drawRate = Math.round(clamp((a.temp - b.temp) / h, 0, 10) * 100) / 100;
+}
+
 // --- Rendement de chauffe ---
 // Session de chauffe = suite de ticks avec résistance alimentée. En fin de
 // session d'au moins 0,4 kWh et 1,5 °C, rendement = énergie thermique gagnée

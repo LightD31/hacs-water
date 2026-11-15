@@ -31,7 +31,7 @@ const LEGIO_TEMP_REACHED = 60;   // °C validant un cycle
 const LEGIO_GOAL = 61;           // °C visés (marge sur la strate de la sonde)
 const LEGIO_DUE_DAYS = 7;
 const LEGIO_DEADLINE_DAYS = 10;
-const FLOOR_DEADBAND = 2;        // °C au-dessus du minimum visés par le filet
+const FLOOR_DEADBAND = msg.floorMargin != null ? msg.floorMargin : 2;   // °C au-dessus du minimum visés par le filet
 const STORAGE_COVER = 0.9;       // part solaire exigée pour stocker au-delà de la cible
 const COMFORT_MIN_SHARE = 0.15;  // part solaire minimale d'un créneau de confort
 const MAX_HORIZON_MS = 48 * H;
@@ -163,9 +163,19 @@ const plans = [];
 // 1. Minimum garanti : échéance = moment où le refroidissement atteint min_temp.
 //    Déjà dessous : immédiat (seuil nul). Prévision pessimiste (p10).
 //    Inutile si le ballon solaire amont fournit déjà l'eau à la cible.
-if (msg.tempAvailable && msg.temp < msg.stopTemp && !msg.solarCoversTarget) {
-    const deadline = msg.temp <= msg.minT ? now
-        : now + (msg.temp - msg.minT) / Math.max(msg.decayRate, 0.02) * H;
+//    Échéance ancrée sur l'heure de la MESURE (pas sur l'horloge : une valeur
+//    figée la faisait reculer d'une minute par minute) et sur la pente la plus
+//    raide entre refroidissement appris et puisage en cours.
+const floorRate = Math.max(msg.decayRate, msg.drawRate || 0, 0.02);
+const tempAt = msg.tempAt || now;
+// La sonde publie à 1 °C de variation : la vraie température est au-dessus de
+// (mesure − 1 °C). Estimation bornée à 0,9 °C sous la mesure.
+// En chauffe la sonde monte : pas d'extrapolation à la baisse.
+msg.tempEst = !msg.tempAvailable ? null : msg.heating ? msg.temp
+    : r1(Math.max(msg.temp - 0.9, msg.temp - floorRate * Math.max(0, now - tempAt) / H));
+if (msg.tempAvailable && msg.tempEst < msg.stopTemp && !msg.solarCoversTarget) {
+    const deadline = msg.tempEst <= msg.minT ? now
+        : Math.max(now, tempAt + (msg.temp - msg.minT) / floorRate * H);
     const p = plan(msg.stopTemp, deadline, true, 0);
     if (p) plans.push(Object.assign(p, { id: 'floor', label: 'Minimum garanti', basis: 'clim' }));
 }

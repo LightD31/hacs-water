@@ -86,6 +86,20 @@ function makeWorld(o = {}) {
     return ctx;
 }
 
+// Sonde du ballon. Option `report` : publication Zigbee réaliste, au
+// changement de `step` °C ou toutes les `maxMin` minutes (Z2M par défaut sur
+// la sonde d'origine : 1 °C / 60 min), horodatée comme dans HA.
+function sondeState(w) {
+    if (!w.tempAvailable) return { state: 'unavailable' };
+    const r1 = (v) => Math.round(v * 10) / 10;
+    if (!w.report) return { state: String(r1(w.temp)) };
+    const rp = w._rep;
+    if (!rp || Math.abs(w.temp - rp.temp) >= w.report.step || NOW - rp.t >= w.report.maxMin * 60000)
+        w._rep = { temp: r1(w.temp), t: NOW };
+    const iso = new RealDate(w._rep.t).toISOString();
+    return { state: String(w._rep.temp), last_changed: iso, last_reported: iso };
+}
+
 // Registre HA dérivé de l'état du monde
 function buildStates(ctx) {
     const w = ctx.w;
@@ -103,7 +117,7 @@ function buildStates(ctx) {
         'input_number.cumulus_min_temp': { state: String(w.minT) },
         'input_number.cumulus_efficiency': { state: String(w.eff) },
         'input_number.cumulus_tank_volume': { state: '200' },
-        [ENV.WATER_TEMP_SENSOR]: { state: w.tempAvailable ? String(Math.round(w.temp * 10) / 10) : 'unavailable' },
+        [ENV.WATER_TEMP_SENSOR]: sondeState(w),
         [ENV.SOLAR_TANK_SENSOR]: { state: String(w.upstream) },
         [ENV.SOLAR_SENSOR]: { state: String(solar) },
         [ENV.GRID_SENSOR]: { state: String(grid) },
@@ -135,6 +149,8 @@ function physics(ctx) {
         ctx.stats.onMinutes++;
     }
     w.temp -= w.decay * minH;
+    // Puisages : [{ from, to, rate °C/h }]
+    for (const d of w.draws || []) if (NOW >= d.from && NOW < d.to) w.temp -= d.rate * minH;
     // Import imputable au cumulus : avec lui moins sans lui
     ctx.stats.gridKwh += (Math.max(0, p.grid) - Math.max(0, p.grid - p.cumulus)) / 1000 * minH;
     ctx.stats.maxTemp = Math.max(ctx.stats.maxTemp, w.temp);
@@ -396,6 +412,33 @@ scenario('18. Erreur de commande : historique purgé', () => {
     F['Gestion erreur']({ error: { message: 'boom', source: { name: 'switch.turn_on', id: 'x' } } }, ctx);
     check('lastAction purgé', ctx.store.get('lastAction') === null);
     check('expectedSwitch purgé', ctx.store.get('expectedSwitch') === null);
+});
+
+// ===========================================================================
+scenario('19. Nuit, sonde à 1 °C / 60 min : une seule chauffe du minimum, pas d\'impulsions', () => {
+    // 15 novembre 2026 : 47,4 °C à 19 h 43, sonde figée, minimum 46 °C.
+    // L'échéance reculait avec l'horloge, puis chaque mesure la ramenait :
+    // impulsions de 5 min aux :00 / :30 (9, 10 et 14 novembre).
+    NOW = at(0, '20:30');
+    const ctx = makeWorld({ temp: 47.4, decay: 0.3, peakToday: 0, peakTomorrow: 900,
+        report: { step: 1, maxMin: 60 }, eff: 0.6, effTrue: 0.6 });
+    runUntil(ctx, at(1, '07:00'));
+    const ons = ctx.commands.filter(c => c.action === 'turn_on');
+    check('au plus une mise en marche dans la nuit', ons.length <= 1,
+        ons.map(c => hh(c.t)).join(', '));
+    check('minimum tenu', ctx.stats.minTemp >= 45.7, ctx.stats.minTemp.toFixed(1));
+});
+
+scenario('20. Puisage du soir sans soleil : le minimum suit la pente du moment', () => {
+    // 15 novembre 2026 : 51,5 °C à 15 h 35, 47,7 °C à 18 h 43 (≈ 1,3 °C/h).
+    // Avec le refroidissement appris (0,3 °C/h), l'échéance du minimum était
+    // placée cinq heures trop tard.
+    NOW = at(0, '17:00');
+    const ctx = makeWorld({ temp: 49.6, decay: 0.3, peakToday: 0, peakTomorrow: 900,
+        report: { step: 1, maxMin: 60 }, eff: 0.6, effTrue: 0.6,
+        draws: [{ from: at(0, '17:00'), to: at(0, '21:30'), rate: 1.4 }] });
+    runUntil(ctx, at(1, '01:00'));
+    check('minimum tenu pendant le puisage', ctx.stats.minTemp >= 45.7, ctx.stats.minTemp.toFixed(1));
 });
 
 console.log('\n' + pass + ' assertion(s) OK, ' + fail + ' en échec');

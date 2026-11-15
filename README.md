@@ -121,6 +121,7 @@ légionelle et le stockage gratuit restent actifs.
 | `WATER_TEMP_SENSOR` | `sensor.temp_chauffe_eau_electrique_temperature` |
 | `SOLAR_TANK_SENSOR` | `sensor.temp_chauffe_eau_solaire_temperature` |
 | `SOLAR_SUFFICIENT_MARGIN` | `3` |
+| `FLOOR_MARGIN` (°C visés au-dessus de `min_temp` par le minimum garanti) | `2` |
 | `SOLAR_SENSOR` / `GRID_SENSOR` / `HOUSE_SENSOR` | `sensor.pince_amperemetrique_power_a` / `_b` / `_ab` |
 | `CLIM_SENSOR` | `sensor.clim_automation` (absent : 0 W récupérable) |
 
