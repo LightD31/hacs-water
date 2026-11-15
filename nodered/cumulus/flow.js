@@ -15,6 +15,7 @@ const ENV = [
     ['GRID_SENSOR', 'sensor.pince_amperemetrique_power_b', 'str'],
     ['HOUSE_SENSOR', 'sensor.pince_amperemetrique_power_ab', 'str'],
     ['CLIM_SENSOR', 'sensor.clim_automation', 'str'],
+    ['SUN_ENTITY', 'sun.sun', 'str'],
 ];
 
 const INFO = `# Cumulus solaire — planification au surplus

@@ -23,6 +23,50 @@ Modifications notables de ce dépôt, listées ci-dessous.
 - Simulation : sonde à 1 °C / 60 min (une seule chauffe la nuit) et puisage
   du soir sans soleil (minimum tenu).
 
+### Flow cumulus — anticipation de la nuit, anti-légionelle de jour
+
+- **Anticipation de la nuit** (plan `floor_ahead`) : soleil levé, si le
+  refroidissement appris doit faire passer l'eau sous le filet (`min_temp` +
+  `FLOOR_MARGIN`) avant le retour du bon soleil demain, le manque est pris sur
+  le bon soleil restant du jour (surplus attendu ≥ 50 % du tirage), jamais au
+  réseau. Le minimum garanti n'était que réactif : sous le filet le soir, il
+  ne lui restait que des créneaux de nuit (8 novembre : export l'après-midi,
+  puis minimum tenu au réseau de 1 h 30 à 5 h).
+- **Anti-légionelle de jour** : créneaux de jour seulement, échéance au coucher
+  du soleil du 10e jour au lieu de l'heure exacte du dernier 60 °C. Le
+  14 novembre, l'échéance tombait à 8 h 53 : cycle entier au réseau de 2 h à
+  7 h 42, et le soleil de midi est parti en stockage. Le verrou des chauffes à
+  seuil nul tombe au coucher du soleil pour ce plan ; échue, la chauffe reste
+  immédiate, de nuit comprise.
+- Jour et nuit lus sur l'intégration Sun (`SUN_ENTITY`, défaut `sun.sun`),
+  repli sur la production Solcast. Attributs `sun_up`, `sunset`, `sun_return`.
+- **Passage de relais entre besoins** : chauffe engagée, le créneau en cours
+  passe devant à surplus égal. Le verrou de la version précédente ne tient
+  que le plan qui a démarré : à 48 °C le minimum s'arrêtait, l'eau
+  refroidissait, le minimum repartait la nuit et l'anti-légionelle se faisait
+  le lendemain. Les besoins s'enchaînent désormais sans coupure (scénario 26 :
+  1 démarrage au lieu de 4, aucune chauffe la nuit, même énergie à état final
+  égal). Sur trois semaines simulées (sonde 1 °C / 60 min, puisages, soleil
+  variable), aucune différence par ailleurs.
+- **Grâce de 5 min sur la sonde** au redémarrage de HA ou de Zigbee2MQTT : état
+  maintenu (règle `sensor_grace`) au lieu de basculer en « sonde HS » et de
+  couper une chauffe en cours.
+- Simulation : intégration Sun simulée, scénarios 21 à 26 (tous en échec sur
+  la version précédente).
+
+### Carte cumulus
+
+- État **Anticipation de la nuit** et explication : « sans appoint, l'eau
+  passerait sous 48 °C avant le bon soleil (demain 10h00) ; appoint au soleil
+  restant d'ici 17h27 ».
+- Anti-légionelle : « de jour seulement, reprise au lever du soleil » la nuit,
+  créneaux « de jour », échéance marquée « coucher du soleil ».
+- État **Sonde en attente** pendant la grâce de 5 min.
+- Ligne **Soleil** (coucher, prochain bon soleil) ; plans de jour seulement
+  affichés « de jour » au lieu d'« immédiat » ; description du curseur Minimum
+  mise à jour ; dates relatives (« demain », jour de la semaine) dans la bande
+  stratégie, au lieu d'un « demain » écrit pour toute échéance hors du jour.
+
 ## [v2.0.0] - 2026-10-14
 
 Refonte des deux automatisations pour un contrat Base à export non rémunéré :

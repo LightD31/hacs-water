@@ -15,6 +15,7 @@ const plans = (msg.plans || []).map(p => ({
     free_kwh: p.freeKwh != null ? p.freeKwh : null,
     grid_kwh: p.gridKwh != null ? p.gridKwh : null,
     shortfall: p.shortfall === true,
+    daylight_only: p.daylightOnly === true,
     fallback: p.fallback === true,
     first_slot: iso(p.firstSlot),
     slot_count: (p.slots || []).length
@@ -51,6 +52,9 @@ const attrs = {
     plan_eval: msg.planEval || [],
     decision_path: msg.decisionPath || [],
     short_cycle_hold: msg.shortCycleHold === true,
+    sun_up: msg.sunUpNow === true,
+    sunset: iso(msg.sunsetT),
+    sun_return: iso(msg.sunReturnT),
 
     // --- Bilan électrique ---
     solar_power: msg.solar,

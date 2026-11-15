@@ -48,7 +48,8 @@ const ID = {
     solcastToday: 'sensor.solcast_pv_forecast_previsions_pour_aujourd_hui',
     solcastTomorrow: 'sensor.solcast_pv_forecast_previsions_pour_demain',
     solcastRemaining: 'sensor.solcast_pv_forecast_previsions_de_production_restantes_aujourd_hui',
-    solcastField: 'select.solcast_pv_forecast_utiliser_le_champ_de_prevision'
+    solcastField: 'select.solcast_pv_forecast_utiliser_le_champ_de_prevision',
+    sun: eStr('SUN_ENTITY', 'sun.sun')
 };
 
 msg.switchId = ID.switch;
@@ -137,5 +138,15 @@ const lu = g[ID.solcastToday]?.last_updated;
 const ageMs = lu ? now - new Date(lu).getTime() : Infinity;
 msg.solcastAgeHours = isFinite(ageMs) ? Math.round(ageMs / 360000) / 10 : null;
 msg.solcastStale = !(ageMs <= 6 * 3600 * 1000) || msg.forecastSlots.length === 0;
+
+// --- Soleil (intégration Sun) : jour ou nuit, prochains coucher et lever ---
+// Absent ou illisible : le plan se replie sur la production Solcast (nulle la nuit).
+const sunE = g[ID.sun];
+const tOf = (v) => { const t = v ? new Date(v).getTime() : NaN; return isNaN(t) ? null : t; };
+msg.nextSetting = tOf(sunE?.attributes?.next_setting);
+msg.nextRising = tOf(sunE?.attributes?.next_rising);
+msg.sunAvailable = (sunE?.state === 'above_horizon' || sunE?.state === 'below_horizon')
+    && msg.nextSetting !== null && msg.nextRising !== null;
+msg.sunUp = msg.sunAvailable ? sunE.state === 'above_horizon' : null;
 
 return msg;

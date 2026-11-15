@@ -100,6 +100,21 @@ function sondeState(w) {
     return { state: String(w._rep.temp), last_changed: iso, last_reported: iso };
 }
 
+// Intégration Sun : lever 8 h 30, coucher 18 h 30, comme la cloche solaire.
+// Option `noSunEntity` : entité absente (repli sur la production Solcast).
+function sunState() {
+    const d = new RealDate(NOW);
+    const ev = (dd, h, m) => new RealDate(d.getFullYear(), d.getMonth(), d.getDate() + dd, h, m).getTime();
+    const rise = ev(0, 8, 30), set = ev(0, 18, 30);
+    return {
+        state: NOW >= rise && NOW < set ? 'above_horizon' : 'below_horizon',
+        attributes: {
+            next_rising: new RealDate(NOW < rise ? rise : ev(1, 8, 30)).toISOString(),
+            next_setting: new RealDate(NOW < set ? set : ev(1, 18, 30)).toISOString(),
+        },
+    };
+}
+
 // Registre HA dérivé de l'état du monde
 function buildStates(ctx) {
     const w = ctx.w;
@@ -136,6 +151,7 @@ function buildStates(ctx) {
         [ENV.CLIM_SENSOR]: { state: 'x', attributes: {
             recoverable_w: w.climRecoverable, clim_power_total_w: w.climDraw } },
     };
+    if (!w.noSunEntity) st[ENV.SUN_ENTITY] = sunState();
     ctx.states = st;
 }
 
@@ -439,6 +455,114 @@ scenario('20. Puisage du soir sans soleil : le minimum suit la pente du moment',
         draws: [{ from: at(0, '17:00'), to: at(0, '21:30'), rate: 1.4 }] });
     runUntil(ctx, at(1, '01:00'));
     check('minimum tenu pendant le puisage', ctx.stats.minTemp >= 45.7, ctx.stats.minTemp.toFixed(1));
+});
+
+scenario('21. Redémarrage HA : sonde indisponible quelques secondes, chauffe maintenue', () => {
+    NOW = at(0, '23:00');
+    const ctx = makeWorld({ temp: 44 });
+    run(ctx, 15);   // au-delà de l'anti court-cycle
+    check('chauffe engagée', ctx.w.switch === 'on');
+    ctx.w.tempAvailable = false;
+    run(ctx, 2);
+    check('pas de coupure pendant 2 min sans sonde', ctx.w.switch === 'on', last.state);
+    run(ctx, 10);
+    check('repli sonde HS au-delà de la grâce', /sonde HS/i.test(last.state), last.state);
+});
+
+scenario('22. Anti-légionelle au dernier jour, aucun soleil : de jour et d\'un seul tenant', () => {
+    // 14 novembre : échéance à 8 h 53, cycle entier au réseau de 2 h à 7 h 42.
+    // Désormais : échéance au coucher du 10e jour, créneaux de jour seulement.
+    NOW = at(0, '00:30');
+    const lastHigh = at(0, '07:30') - 10 * 86400000;
+    const ctx = makeWorld({ temp: 50, decay: 0.29, effTrue: 0.6, eff: 0.6,
+        peakToday: 0, peakTomorrow: 0, report: { step: 1, maxMin: 60 },
+        context: { lastHighTempAt: lastHigh, decayRate: 0.29 } });
+    runUntil(ctx, at(0, '22:00'));
+    const ons = ctx.commands.filter(c => c.action === 'turn_on');
+    const log = ctx.commands.map(c => hh(c.t) + ' ' + c.action.slice(5)).join(', ');
+    check('rien avant le lever du soleil', ons.every(c => c.t >= at(0, '08:30')), log);
+    check('60 °C atteints', ctx.stats.maxTemp >= 60, ctx.stats.maxTemp.toFixed(1));
+    check('une seule chauffe', ons.length === 1, log);
+});
+
+scenario('23. Bon soleil l\'après-midi, nuit qui ferait passer sous le filet : appoint au soleil', () => {
+    // 8 novembre : export l'après-midi, puis minimum tenu au réseau de 1 h 30
+    // à 5 h. Demain est plus beau : le confort attend demain, l'anticipation
+    // prend aujourd'hui de quoi passer la nuit.
+    for (const noSun of [false, true]) {
+        NOW = at(0, '11:00');
+        const ctx = makeWorld({ temp: 50.5, decay: 0.3, peakToday: 1300, peakTomorrow: 2000,
+            noSunEntity: noSun, context: { decayRate: 0.3 } });
+        let night = 0, day0 = 0;
+        runUntil(ctx, at(1, '10:00'), () => {
+            if (ctx.w.switch !== 'on') return;
+            if (NOW >= at(0, '18:30') && NOW < at(1, '08:30')) night++;
+            else if (NOW < at(0, '18:30')) day0++;
+        });
+        const tag = noSun ? ' (sans intégration Sun)' : '';
+        check('appoint pris au soleil aujourd\'hui' + tag, day0 >= 30, day0 + ' min');
+        check('aucune chauffe la nuit' + tag, night === 0, night + ' min');
+        check('minimum tenu' + tag, ctx.stats.minTemp >= 46, ctx.stats.minTemp.toFixed(1));
+        check('à plus de 60 % solaire' + tag, solarShare(ctx) > 0.6, (solarShare(ctx) * 100).toFixed(0) + ' %');
+    }
+});
+
+scenario('24. Anti-légionelle : échéance du matin reportée au coucher, le soleil du 10e jour sert', () => {
+    NOW = at(0, '09:00');
+    const lastHigh = at(1, '08:53') - 10 * 86400000;
+    const ctx = makeWorld({ temp: 50, decay: 0.1, peakToday: 700, peakTomorrow: 1900,
+        context: { lastHighTempAt: lastHigh, decayRate: 0.1 } });
+    let night = 0, reachedAt = null;
+    run(ctx, 1);
+    check('échéance (8 h 53) reportée au coucher du 10e jour', last.legionellaDeadline === at(1, '18:30'),
+        new RealDate(last.legionellaDeadline).toString().slice(4, 21));
+    runUntil(ctx, at(1, '20:00'), () => {
+        if (ctx.w.switch === 'on' && NOW >= at(0, '18:30') && NOW < at(1, '08:30')) night++;
+        if (reachedAt === null && ctx.w.temp >= 60) reachedAt = NOW;
+    });
+    check('60 °C atteints le 10e jour, de jour', reachedAt !== null && reachedAt >= at(1, '08:30')
+        && reachedAt <= at(1, '18:30'), reachedAt && hh(reachedAt));
+    check('aucune chauffe la nuit', night === 0, night + ' min');
+    check('cycle à plus de 80 % solaire', solarShare(ctx) > 0.8, (solarShare(ctx) * 100).toFixed(0) + ' %');
+});
+
+scenario('25. Anti-légionelle engagée au coucher du soleil, échéance demain : arrêt, reprise de jour', () => {
+    // Le verrou des chauffes à seuil nul tient jusqu'à la cible ; pour un plan de
+    // jour seulement, il tombe au coucher du soleil.
+    NOW = at(0, '14:00');
+    const lastHigh = at(1, '12:00') - 10 * 86400000;   // échéance demain 18 h 30
+    const ctx = makeWorld({ temp: 30, minT: 25, decay: 0.2, eff: 0.3, effTrue: 0.3,
+        peakToday: 0, peakTomorrow: 0, context: { lastHighTempAt: lastHigh, decayRate: 0.2 } });
+    let night = 0;
+    run(ctx, 5);
+    check('chauffe engagée l\'après-midi', ctx.w.switch === 'on', last.state);
+    runUntil(ctx, at(1, '09:30'), () => {
+        if (ctx.w.switch === 'on' && NOW >= at(0, '18:40') && NOW < at(1, '08:30')) night++;
+    });
+    check('arrêt au coucher, rien la nuit', night === 0, night + ' min');
+    check('reprise au lever', ctx.w.switch === 'on', last.state);
+});
+
+scenario('26. Minimum puis anti-légionelle, sans soleil : passage de relais sans coupure', () => {
+    // Le verrou ne tient que le plan qui a démarré : à 48 °C le minimum
+    // s'arrêtait, l'eau refroidissait, le minimum repartait la nuit et le cycle
+    // se faisait le lendemain (4 démarrages). La chauffe en cours garde
+    // désormais son créneau pour le besoin suivant.
+    NOW = at(0, '09:00');
+    const lastHigh = at(1, '12:00') - 10 * 86400000;   // due, échéance demain au coucher
+    const ctx = makeWorld({ temp: 46.3, minT: 46, decay: 0.2, eff: 0.6, effTrue: 0.6,
+        peakToday: 0, peakTomorrow: 0, report: { step: 1, maxMin: 60 },
+        context: { lastHighTempAt: lastHigh, decayRate: 0.2 } });
+    let night = 0;
+    runUntil(ctx, at(1, '19:00'), () => {
+        const h = new RealDate(NOW).getHours() + new RealDate(NOW).getMinutes() / 60;
+        if (ctx.w.switch === 'on' && (h >= 18.5 || h < 8.5)) night++;
+    });
+    const ons = ctx.commands.filter(c => c.action === 'turn_on');
+    const log = ctx.commands.map(c => hh(c.t) + ' ' + c.action.slice(5)).join(', ');
+    check('60 °C atteints', ctx.stats.maxTemp >= 60, ctx.stats.maxTemp.toFixed(1));
+    check('un seul démarrage', ons.length === 1, log);
+    check('aucune chauffe la nuit', night === 0, night + ' min');
 });
 
 console.log('\n' + pass + ' assertion(s) OK, ' + fail + ' en échec');
