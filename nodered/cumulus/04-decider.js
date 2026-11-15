@@ -20,6 +20,7 @@ const HA_LAG_GRACE_MS = 90 * 1000;
 const MIN_ON_MS = 5 * 60000;
 const MIN_OFF_MS = 3 * 60000;
 const HYST_W = 150;               // tolérance à l'arrêt, sous le seuil
+const SONDE_GRACE_MS = 5 * 60000; // sonde absente au redémarrage HA / Z2M
 
 const path = [];
 const step = (id, label, status, detail) => path.push({ id, label, status, detail: detail || null });
@@ -93,12 +94,24 @@ const thresholdUsed = (p) => (on
 // suivant : impulsions de 5 à 15 min aux :00 / :30 la nuit.
 const latched = getF('zeroPlanLatch');
 const satisfied = (p) => {
-    if (p.threshold <= 0) return p.nowPicked === true || (on && latched === p.id);
+    // Plan de jour seulement (anti-légionelle) : le verrou tombe au coucher du
+    // soleil, la chauffe reprend demain (échue, la règle 5 force la chauffe).
+    if (p.threshold <= 0) return p.nowPicked === true
+        || (on && latched === p.id && (!p.daylightOnly || msg.sunUpNow === true));
     return surplusFor(p) >= thresholdUsed(p);
 };
 
-// 4. Sonde HS : sans température, seul le stockage gratuit reste sûr
-msg.degradedSonde = !msg.tempAvailable;
+// 4. Sonde HS : sans température, seul le stockage gratuit reste sûr.
+//    Absente depuis moins de 5 min (redémarrage HA ou Zigbee2MQTT) : état
+//    maintenu, pour ne pas couper une chauffe sur un trou de quelques secondes.
+const sondeDownSince = getF('sondeDownSince');
+const sondeGrace = !msg.tempAvailable && sondeDownSince && now - sondeDownSince < SONDE_GRACE_MS;
+msg.degradedSonde = !msg.tempAvailable && !sondeGrace;
+if (!decided && sondeGrace) {
+    step('sensor', 'Sonde du ballon', 'hit', 'indisponible, attente ' + Math.round(SONDE_GRACE_MS / 60000) + ' min');
+    decide(msg.switchState, on ? 'Chauffage (sonde en attente)' : 'Veille (sonde en attente)',
+        'Sonde momentanément indisponible, état maintenu', 'sensor_grace');
+}
 if (!decided) {
     if (msg.degradedSonde) {
         const st = msg.plans.find(p => p.id === 'storage');
@@ -142,6 +155,7 @@ if (!decided) {
                     + (on && thresholdUsed(p) < p.threshold ? ' (maintien)' : '');
             const states = {
                 floor: 'Chauffage (minimum garanti)',
+                floor_ahead: 'Chauffage (anticipation de la nuit)',
                 legionella: 'Chauffage (anti-légionelle)',
                 comfort: 'Chauffage (solaire)',
                 storage: 'Chauffage (stockage gratuit)'
