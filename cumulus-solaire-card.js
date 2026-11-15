@@ -63,6 +63,15 @@ const DEFAULT_CONTROLS = {
 
 const CONTROL_ORDER = ['enabled', 'target', 'min', 'efficiency', 'tank'];
 
+// Formats communs avec la carte clim : « 1 600 W », « 20.0 °C »
+const nbsp = '\u202f';   // espace fine insécable, comme la carte clim
+const fmtW = (v, signed = false) => {
+  if (v == null || isNaN(v)) return '—';
+  const n = Math.round(v);
+  return `${signed && n >= 0 ? '+' : ''}${n.toLocaleString('fr-FR').replace(/\s/g, nbsp)}${nbsp}W`;
+};
+const fmtT = (v, digits = 1) => (v == null || isNaN(v)) ? '—' : `${Number(v).toFixed(digits)}${nbsp}°C`;
+
 class CumulusSolaireCard extends HTMLElement {
   static getStubConfig() {
     return { entity: 'sensor.cumulus_automation' };
@@ -740,33 +749,33 @@ class CumulusSolaireCard extends HTMLElement {
     const pills = [];
     if (a.reach_for != null) {
       const up = a.target_temp != null && a.reach_for - a.target_temp > 0.1;
-      pills.push({ icon: 'mdi:thermometer-check', label: 'Cible', value: `${Math.round(a.reach_for)}°C`,
-        sub: up ? 'anti-légionelle' : (a.need_kwh > 0 ? `${Number(a.need_kwh).toFixed(1)} kWh` : 'atteinte'),
+      pills.push({ icon: 'mdi:thermometer-check', label: 'Cible', value: fmtT(a.reach_for, 0),
+        sub: up ? 'anti-légionelle' : (a.need_kwh > 0 ? `${Number(a.need_kwh).toFixed(1)}${nbsp}kWh` : 'atteinte'),
         tone: up ? 'up' : 'neutral' });
     }
     if (lead) {
       pills.push({ icon: 'mdi:solar-power', label: 'Seuil',
-        value: lead.threshold_w > 0 ? `${Math.round(lead.threshold_w)} W` : 'immédiat',
-        sub: `surplus ${Math.round(a.surplus_avg_w ?? 0)} W`,
+        value: lead.threshold_w > 0 ? fmtW(lead.threshold_w) : 'immédiat',
+        sub: `surplus ${fmtW(a.surplus_avg_w ?? 0)}`,
         tone: a.desired === 'on' ? 'active' : 'neutral' });
       const first = Array.isArray(a.planned_slots) && a.planned_slots.length ? a.planned_slots[0] : null;
       pills.push({ icon: 'mdi:clock-outline', label: 'Créneaux',
         value: first ? `dès ${hhmm(first)}` : '—',
-        sub: lead.grid_kwh > 0.05 ? `${Number(lead.grid_kwh).toFixed(1)} kWh réseau` : 'tout solaire',
+        sub: lead.grid_kwh > 0.05 ? `${Number(lead.grid_kwh).toFixed(1)}${nbsp}kWh réseau` : 'tout solaire',
         tone: lead.grid_kwh > 0.05 ? 'down' : 'neutral' });
     } else {
       pills.push({ icon: 'mdi:transmission-tower-export', label: 'Stockage',
-        value: `${Math.round(a.cumulus_load_w * 0.9 || 1080)} W`, sub: 'surplus exigé', tone: 'neutral' });
+        value: fmtW(a.cumulus_load_w * 0.9 || 1080), sub: 'surplus exigé', tone: 'neutral' });
     }
 
     const rows = [];
     for (const p of plans) {
       if (p.id === 'storage') continue;
       rows.push([`Plan ${p.label.toLowerCase()}`,
-        `${p.threshold_w > 0 ? Math.round(p.threshold_w) + ' W' : (p.daylight_only ? 'de jour' : 'immédiat')} · ${Number(p.need_kwh || 0).toFixed(1)} kWh`
+        `${p.threshold_w > 0 ? fmtW(p.threshold_w) : (p.daylight_only ? 'de jour' : 'immédiat')} · ${Number(p.need_kwh || 0).toFixed(1)}${nbsp}kWh`
         + (p.deadline ? ` · avant ${when(p.deadline)}` : '')]);
     }
-    if (a.base_load_w != null) rows.push(['Consommation de fond', `${Math.round(a.base_load_w)} W`]);
+    if (a.base_load_w != null) rows.push(['Consommation de fond', fmtW(a.base_load_w)]);
     if (a.solcast_bias_today != null) rows.push(['Biais Solcast', `×${Number(a.solcast_bias_today).toFixed(2)} aujourd'hui · ×${Number(a.solcast_bias_long).toFixed(2)} demain`]);
     if (a.decay_c_per_h != null) rows.push(['Refroidissement', `${Number(a.decay_c_per_h).toFixed(2)} °C/h`]);
     if (a.efficiency != null) rows.push(['Rendement', `${Math.round(a.efficiency * 100)} % (${a.efficiency_source || '?'})`]);
@@ -793,7 +802,6 @@ class CumulusSolaireCard extends HTMLElement {
         status: s.status === 'hit' ? 'fired' : s.status === 'pass' ? 'pass' : 'skip',
       }));
     }
-    const fmtW = (v) => (v != null && !isNaN(v)) ? `${Math.round(v)} W` : '—';
     const tempOk = a.temp_sensor_available !== false;
     const antiInj = (a.anti_injection_useful !== undefined)
       ? a.anti_injection_useful : a.anti_injection_active;
@@ -1233,18 +1241,12 @@ class CumulusSolaireCard extends HTMLElement {
   // ---------- Chips ----------
 
   _renderChips(a) {
-    const fmtSigned = (n) => {
-      if (n == null || isNaN(n)) return '—';
-      const v = Math.round(n);
-      return (v >= 0 ? '+' : '') + v;
-    };
-    const fmtRound = (n) => (n == null || isNaN(n)) ? '—' : Math.round(n);
 
     const chips = [
       {
         icon: 'mdi:solar-power-variant',
         color: '#ffb300',
-        value: `${fmtRound(a.solar_power)} W`,
+        value: fmtW(a.solar_power),
         label: 'Production',
       },
       (() => {
@@ -1278,7 +1280,7 @@ class CumulusSolaireCard extends HTMLElement {
         return {
           icon,
           color,
-          value: `${fmtSigned(a.potential_surplus)} W`,
+          value: fmtW(a.potential_surplus, true),
           label,
         };
       })(),
@@ -1290,20 +1292,20 @@ class CumulusSolaireCard extends HTMLElement {
              : a.legionella_due      ? '#fb8c00'
                                      : '#43a047',
         value: (a.days_since_high_temp != null) ? `${a.days_since_high_temp} j` : '—',
-        label: 'Sans 60°C',
+        label: 'Sans 60 °C',
       },
       // Cumulus solaire amont — affiché seulement si la sonde existe
       ...(a.solar_upstream_temp != null ? [{
         icon: a.solar_covers_target ? 'mdi:solar-power-variant' : 'mdi:water-thermometer-outline',
         color: a.solar_covers_target ? '#26a69a' : '#1e88e5',
-        value: `${Number(a.solar_upstream_temp).toFixed(1)}°`,
+        value: fmtT(a.solar_upstream_temp),
         label: 'Solaire amont',
       }] : []),
       ...(a.solar_share_today != null ? [{
         icon: 'mdi:white-balance-sunny',
         color: a.solar_share_today >= 80 ? '#43a047' : a.solar_share_today >= 50 ? '#fb8c00' : '#e53935',
-        value: `${a.solar_share_today} %`,
-        label: `Solaire · ${Number(a.heat_kwh_today || 0).toFixed(1)} kWh`,
+        value: `${a.solar_share_today}${nbsp}%`,
+        label: `Solaire · ${Number(a.heat_kwh_today || 0).toFixed(1)}${nbsp}kWh`,
       }] : []),
       ...(a.thermostat_tripped === true ? [{
         icon: 'mdi:thermostat-box',
@@ -1406,7 +1408,7 @@ class CumulusSolaireCard extends HTMLElement {
     const unit = so?.attributes?.unit_of_measurement || '';
     const step = parseFloat(slider.step) || 1;
     const digits = step >= 1 ? 0 : (step >= 0.1 ? 1 : 2);
-    return `${v.toFixed(digits)}${unit ? ' ' + unit : ''}`;
+    return `${v.toFixed(digits)}${unit ? nbsp + unit : ''}`;
   }
 
   // ---------- Verrou ----------
@@ -1610,7 +1612,7 @@ class CumulusSolaireCard extends HTMLElement {
         grid-template-columns: 56px 1fr;
         gap: 14px;
         align-items: center;
-        padding: 14px 18px 6px 18px;
+        padding: 14px 18px 8px 18px;
         cursor: pointer;
       }
       .hero-icon {
@@ -1673,10 +1675,12 @@ class CumulusSolaireCard extends HTMLElement {
       .hero-reason {
         font-size: 0.82rem;
         color: var(--csc-text-2);
+        line-height: 1.35;
         margin-top: 2px;
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
         overflow: hidden;
-        text-overflow: ellipsis;
       }
 
       /* Strategy strip */
@@ -1733,11 +1737,8 @@ class CumulusSolaireCard extends HTMLElement {
       }
       .strategy-pills {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
         gap: 8px;
-      }
-      @media (max-width: 520px) {
-        .strategy-pills { grid-template-columns: 1fr; }
       }
       .strat-pill {
         display: grid;
@@ -1838,9 +1839,7 @@ class CumulusSolaireCard extends HTMLElement {
         text-align: right;
         font-variant-numeric: tabular-nums;
         min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
       }
 
       .strat-detail-row {
@@ -1941,7 +1940,8 @@ class CumulusSolaireCard extends HTMLElement {
         .chip { background: var(--csc-divider); }
       }
       .chip ha-icon { --mdc-icon-size: 20px; color: var(--chip-color); }
-      .chip .v { font-size: 0.95rem; font-weight: 700; color: var(--csc-text); font-variant-numeric: tabular-nums; line-height: 1.1; }
+      .chip-text { min-width: 0; }
+      .chip .v { font-size: 0.95rem; font-weight: 700; color: var(--csc-text); font-variant-numeric: tabular-nums; line-height: 1.1; white-space: nowrap; }
       .chip .l { font-size: 0.68rem; color: var(--csc-text-2); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
 
       /* Settings */
@@ -2031,11 +2031,14 @@ class CumulusSolaireCard extends HTMLElement {
         font-size: 0.95rem;
         font-weight: 700;
         color: var(--csc-accent);
+        white-space: nowrap;
       }
       .setting-value-sub {
         font-size: 0.75rem;
         color: var(--csc-text-2);
+        white-space: nowrap;
       }
+      .setting-value-sub:empty { display: none; }
       .setting-desc {
         font-size: 0.72rem;
         color: var(--csc-text-2);
@@ -2049,6 +2052,7 @@ class CumulusSolaireCard extends HTMLElement {
         appearance: none;
         width: 100%;
         height: 6px;
+        margin: 4px 0;
         border-radius: 3px;
         background: var(--csc-divider);
         background-image: linear-gradient(var(--csc-accent), var(--csc-accent));

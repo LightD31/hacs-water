@@ -75,6 +75,15 @@ const DEFAULT_CONTROLS = {
 
 const CONTROL_ORDER = ['enabled', 'target', 'min', 'efficiency', 'tank'];
 
+// Formats communs avec la carte clim : « 1 600 W », « 20.0 °C »
+const nbsp = '\u202f';   // espace fine insécable, comme la carte clim
+const fmtW = (v, signed = false) => {
+  if (v == null || isNaN(v)) return '—';
+  const n = Math.round(v);
+  return `${signed && n >= 0 ? '+' : ''}${n.toLocaleString('fr-FR').replace(/\s/g, nbsp)}${nbsp}W`;
+};
+const fmtT = (v, digits = 1) => (v == null || isNaN(v)) ? '—' : `${Number(v).toFixed(digits)}${nbsp}°C`;
+
 class CumulusSolaireCard extends HTMLElement {
   static getStubConfig() {
     return { entity: 'sensor.cumulus_automation' };
@@ -752,33 +761,33 @@ class CumulusSolaireCard extends HTMLElement {
     const pills = [];
     if (a.reach_for != null) {
       const up = a.target_temp != null && a.reach_for - a.target_temp > 0.1;
-      pills.push({ icon: 'mdi:thermometer-check', label: 'Cible', value: `${Math.round(a.reach_for)}°C`,
-        sub: up ? 'anti-légionelle' : (a.need_kwh > 0 ? `${Number(a.need_kwh).toFixed(1)} kWh` : 'atteinte'),
+      pills.push({ icon: 'mdi:thermometer-check', label: 'Cible', value: fmtT(a.reach_for, 0),
+        sub: up ? 'anti-légionelle' : (a.need_kwh > 0 ? `${Number(a.need_kwh).toFixed(1)}${nbsp}kWh` : 'atteinte'),
         tone: up ? 'up' : 'neutral' });
     }
     if (lead) {
       pills.push({ icon: 'mdi:solar-power', label: 'Seuil',
-        value: lead.threshold_w > 0 ? `${Math.round(lead.threshold_w)} W` : 'immédiat',
-        sub: `surplus ${Math.round(a.surplus_avg_w ?? 0)} W`,
+        value: lead.threshold_w > 0 ? fmtW(lead.threshold_w) : 'immédiat',
+        sub: `surplus ${fmtW(a.surplus_avg_w ?? 0)}`,
         tone: a.desired === 'on' ? 'active' : 'neutral' });
       const first = Array.isArray(a.planned_slots) && a.planned_slots.length ? a.planned_slots[0] : null;
       pills.push({ icon: 'mdi:clock-outline', label: 'Créneaux',
         value: first ? `dès ${hhmm(first)}` : '—',
-        sub: lead.grid_kwh > 0.05 ? `${Number(lead.grid_kwh).toFixed(1)} kWh réseau` : 'tout solaire',
+        sub: lead.grid_kwh > 0.05 ? `${Number(lead.grid_kwh).toFixed(1)}${nbsp}kWh réseau` : 'tout solaire',
         tone: lead.grid_kwh > 0.05 ? 'down' : 'neutral' });
     } else {
       pills.push({ icon: 'mdi:transmission-tower-export', label: 'Stockage',
-        value: `${Math.round(a.cumulus_load_w * 0.9 || 1080)} W`, sub: 'surplus exigé', tone: 'neutral' });
+        value: fmtW(a.cumulus_load_w * 0.9 || 1080), sub: 'surplus exigé', tone: 'neutral' });
     }
 
     const rows = [];
     for (const p of plans) {
       if (p.id === 'storage') continue;
       rows.push([`Plan ${p.label.toLowerCase()}`,
-        `${p.threshold_w > 0 ? Math.round(p.threshold_w) + ' W' : (p.daylight_only ? 'de jour' : 'immédiat')} · ${Number(p.need_kwh || 0).toFixed(1)} kWh`
+        `${p.threshold_w > 0 ? fmtW(p.threshold_w) : (p.daylight_only ? 'de jour' : 'immédiat')} · ${Number(p.need_kwh || 0).toFixed(1)}${nbsp}kWh`
         + (p.deadline ? ` · avant ${when(p.deadline)}` : '')]);
     }
-    if (a.base_load_w != null) rows.push(['Consommation de fond', `${Math.round(a.base_load_w)} W`]);
+    if (a.base_load_w != null) rows.push(['Consommation de fond', fmtW(a.base_load_w)]);
     if (a.solcast_bias_today != null) rows.push(['Biais Solcast', `×${Number(a.solcast_bias_today).toFixed(2)} aujourd'hui · ×${Number(a.solcast_bias_long).toFixed(2)} demain`]);
     if (a.decay_c_per_h != null) rows.push(['Refroidissement', `${Number(a.decay_c_per_h).toFixed(2)} °C/h`]);
     if (a.efficiency != null) rows.push(['Rendement', `${Math.round(a.efficiency * 100)} % (${a.efficiency_source || '?'})`]);
@@ -805,7 +814,6 @@ class CumulusSolaireCard extends HTMLElement {
         status: s.status === 'hit' ? 'fired' : s.status === 'pass' ? 'pass' : 'skip',
       }));
     }
-    const fmtW = (v) => (v != null && !isNaN(v)) ? `${Math.round(v)} W` : '—';
     const tempOk = a.temp_sensor_available !== false;
     const antiInj = (a.anti_injection_useful !== undefined)
       ? a.anti_injection_useful : a.anti_injection_active;
@@ -1245,18 +1253,12 @@ class CumulusSolaireCard extends HTMLElement {
   // ---------- Chips ----------
 
   _renderChips(a) {
-    const fmtSigned = (n) => {
-      if (n == null || isNaN(n)) return '—';
-      const v = Math.round(n);
-      return (v >= 0 ? '+' : '') + v;
-    };
-    const fmtRound = (n) => (n == null || isNaN(n)) ? '—' : Math.round(n);
 
     const chips = [
       {
         icon: 'mdi:solar-power-variant',
         color: '#ffb300',
-        value: `${fmtRound(a.solar_power)} W`,
+        value: fmtW(a.solar_power),
         label: 'Production',
       },
       (() => {
@@ -1290,7 +1292,7 @@ class CumulusSolaireCard extends HTMLElement {
         return {
           icon,
           color,
-          value: `${fmtSigned(a.potential_surplus)} W`,
+          value: fmtW(a.potential_surplus, true),
           label,
         };
       })(),
@@ -1302,20 +1304,20 @@ class CumulusSolaireCard extends HTMLElement {
              : a.legionella_due      ? '#fb8c00'
                                      : '#43a047',
         value: (a.days_since_high_temp != null) ? `${a.days_since_high_temp} j` : '—',
-        label: 'Sans 60°C',
+        label: 'Sans 60 °C',
       },
       // Cumulus solaire amont — affiché seulement si la sonde existe
       ...(a.solar_upstream_temp != null ? [{
         icon: a.solar_covers_target ? 'mdi:solar-power-variant' : 'mdi:water-thermometer-outline',
         color: a.solar_covers_target ? '#26a69a' : '#1e88e5',
-        value: `${Number(a.solar_upstream_temp).toFixed(1)}°`,
+        value: fmtT(a.solar_upstream_temp),
         label: 'Solaire amont',
       }] : []),
       ...(a.solar_share_today != null ? [{
         icon: 'mdi:white-balance-sunny',
         color: a.solar_share_today >= 80 ? '#43a047' : a.solar_share_today >= 50 ? '#fb8c00' : '#e53935',
-        value: `${a.solar_share_today} %`,
-        label: `Solaire · ${Number(a.heat_kwh_today || 0).toFixed(1)} kWh`,
+        value: `${a.solar_share_today}${nbsp}%`,
+        label: `Solaire · ${Number(a.heat_kwh_today || 0).toFixed(1)}${nbsp}kWh`,
       }] : []),
       ...(a.thermostat_tripped === true ? [{
         icon: 'mdi:thermostat-box',
@@ -1418,7 +1420,7 @@ class CumulusSolaireCard extends HTMLElement {
     const unit = so?.attributes?.unit_of_measurement || '';
     const step = parseFloat(slider.step) || 1;
     const digits = step >= 1 ? 0 : (step >= 0.1 ? 1 : 2);
-    return `${v.toFixed(digits)}${unit ? ' ' + unit : ''}`;
+    return `${v.toFixed(digits)}${unit ? nbsp + unit : ''}`;
   }
 
   // ---------- Verrou ----------
@@ -1622,7 +1624,7 @@ class CumulusSolaireCard extends HTMLElement {
         grid-template-columns: 56px 1fr;
         gap: 14px;
         align-items: center;
-        padding: 14px 18px 6px 18px;
+        padding: 14px 18px 8px 18px;
         cursor: pointer;
       }
       .hero-icon {
@@ -1685,10 +1687,12 @@ class CumulusSolaireCard extends HTMLElement {
       .hero-reason {
         font-size: 0.82rem;
         color: var(--csc-text-2);
+        line-height: 1.35;
         margin-top: 2px;
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
         overflow: hidden;
-        text-overflow: ellipsis;
       }
 
       /* Strategy strip */
@@ -1745,11 +1749,8 @@ class CumulusSolaireCard extends HTMLElement {
       }
       .strategy-pills {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
         gap: 8px;
-      }
-      @media (max-width: 520px) {
-        .strategy-pills { grid-template-columns: 1fr; }
       }
       .strat-pill {
         display: grid;
@@ -1850,9 +1851,7 @@ class CumulusSolaireCard extends HTMLElement {
         text-align: right;
         font-variant-numeric: tabular-nums;
         min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
       }
 
       .strat-detail-row {
@@ -1953,7 +1952,8 @@ class CumulusSolaireCard extends HTMLElement {
         .chip { background: var(--csc-divider); }
       }
       .chip ha-icon { --mdc-icon-size: 20px; color: var(--chip-color); }
-      .chip .v { font-size: 0.95rem; font-weight: 700; color: var(--csc-text); font-variant-numeric: tabular-nums; line-height: 1.1; }
+      .chip-text { min-width: 0; }
+      .chip .v { font-size: 0.95rem; font-weight: 700; color: var(--csc-text); font-variant-numeric: tabular-nums; line-height: 1.1; white-space: nowrap; }
       .chip .l { font-size: 0.68rem; color: var(--csc-text-2); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
 
       /* Settings */
@@ -2043,11 +2043,14 @@ class CumulusSolaireCard extends HTMLElement {
         font-size: 0.95rem;
         font-weight: 700;
         color: var(--csc-accent);
+        white-space: nowrap;
       }
       .setting-value-sub {
         font-size: 0.75rem;
         color: var(--csc-text-2);
+        white-space: nowrap;
       }
+      .setting-value-sub:empty { display: none; }
       .setting-desc {
         font-size: 0.72rem;
         color: var(--csc-text-2);
@@ -2061,6 +2064,7 @@ class CumulusSolaireCard extends HTMLElement {
         appearance: none;
         width: 100%;
         height: 6px;
+        margin: 4px 0;
         border-radius: 3px;
         background: var(--csc-divider);
         background-image: linear-gradient(var(--csc-accent), var(--csc-accent));
@@ -2445,8 +2449,8 @@ window.customCards.push({
  * Custom Lovelace card pour le sensor.clim_automation produit par le flow
  * Node-RED « Climatisation Solaire » (flows-clim.json).
  *
- * Sections :
- *   1. Hero (état + raison)
+ * Sections (mêmes composants que la carte cumulus) :
+ *   1. Hero (état + raison, interrupteur d'automatisation avec confirmation)
  *   2. Budget de surplus : barre empilée eau chaude / clim / export, écart que
  *      le routeur corrige et action en cours (flow v2) ; paliers d'unités avec
  *      l'ancien flow
@@ -2496,6 +2500,7 @@ const NEED = {
 const DEFAULT_CONTROLS = {
   enabled: {
     entity: 'input_boolean.clim_automation_enabled', label: 'Automatisation', type: 'toggle',
+    icon: 'mdi:robot',
   },
   season: {
     entity: 'input_select.clim_season_mode', label: 'Mode saison', type: 'select',
@@ -2555,6 +2560,7 @@ class ClimSolaireCard extends HTMLElement {
     this._config = {
       show_settings: 'collapsible',   // 'collapsible' | 'expanded' | false
       show_units: true,
+      hero_switch: true,              // interrupteur d'automatisation dans l'en-tête
       lock: true,                     // commandes verrouillées jusqu'à déverrouillage
       lock_timeout: 30,               // s d'inactivité avant reverrouillage
       admin_only: false,              // lecture seule pour les non-administrateurs
@@ -2614,10 +2620,15 @@ class ClimSolaireCard extends HTMLElement {
             <div class="hero-title" id="heroTitle">—</div>
             <div class="hero-reason" id="heroReason">—</div>
           </div>
+          <label class="switch hero-switch" id="heroSwitchWrap" title="Automatisation">
+            <input type="checkbox" id="heroSwitch" aria-label="Automatisation">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
         </div>
+        <div class="hero-confirm" id="heroConfirm"></div>
 
         <div class="budget">
-          <div class="budget-head">
+          <div class="budget-head section-title">
             <span>Budget de surplus</span>
             <button class="info-btn" id="pathBtn" title="Chemin de décision" aria-label="Chemin de décision">
               <ha-icon icon="mdi:information-outline"></ha-icon>
@@ -2635,13 +2646,15 @@ class ClimSolaireCard extends HTMLElement {
 
         <div class="units" id="units"></div>
 
-        <div class="pills" id="pills"></div>
+        <div class="chips" id="pills"></div>
 
         <div class="settings" id="settings">
           <button class="settings-toggle" id="settingsToggle">
-            <ha-icon icon="mdi:cog-outline"></ha-icon>
-            <span>Réglages</span>
-            <ha-icon class="chev" id="settingsChev" icon="mdi:chevron-down"></ha-icon>
+            <span class="settings-toggle-label">
+              <ha-icon icon="mdi:tune-variant"></ha-icon>
+              <span>Réglages</span>
+            </span>
+            <ha-icon class="chevron" id="settingsChev" icon="mdi:chevron-down"></ha-icon>
           </button>
           <div class="settings-body" id="settingsBody"></div>
         </div>
@@ -2652,6 +2665,7 @@ class ClimSolaireCard extends HTMLElement {
     this._el = {
       accent: $('accent'), hero: $('hero'), heroIcon: $('heroIcon'), heroIconEl: $('heroIconEl'),
       heroTitle: $('heroTitle'), heroReason: $('heroReason'),
+      heroSwitch: $('heroSwitch'), heroSwitchWrap: $('heroSwitchWrap'), heroConfirm: $('heroConfirm'),
       bar: $('bar'), segHw: $('segHw'), segClim: $('segClim'), segFree: $('segFree'),
       ticks: $('ticks'), legend: $('legend'), path: $('path'), pathBtn: $('pathBtn'),
       units: $('units'), pills: $('pills'),
@@ -2660,10 +2674,30 @@ class ClimSolaireCard extends HTMLElement {
     };
 
     this._el.hero.addEventListener('click', () => this._moreInfo(this._config.entity));
+
+    // Interrupteur d'automatisation de l'en-tête. Hors du verrou des réglages,
+    // il est donc gardé par une confirmation, dans les deux sens.
+    this._el.heroSwitchWrap.addEventListener('click', (e) => e.stopPropagation());
+    this._el.heroConfirm.addEventListener('click', (e) => e.stopPropagation());
+    this._el.heroSwitch.addEventListener('change', () => {
+      const sw = this._el.heroSwitch;
+      const c = this._config.controls.enabled;
+      const st = c && this._hass.states[c.entity];
+      const isOn = !!st && st.state === 'on';
+      sw.checked = isOn;   // l'interrupteur ne bouge qu'une fois confirmé
+      if (!c || !st || this._readOnly()) return;
+      this._confirm(this._el.heroConfirm,
+        isOn ? 'Couper l\'automatisation ? Les unités ne seront plus pilotées.'
+             : 'Réactiver l\'automatisation de la clim ?',
+        isOn ? 'Couper' : 'Activer',
+        () => this._setToggle(c.entity, !isOn));
+    });
+
     this._el.pathBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._pathOpen = !this._pathOpen;
       this._el.path.classList.toggle('open', this._pathOpen);
+      this._el.pathBtn.classList.toggle('on', this._pathOpen);
     });
     this._el.settingsToggle.addEventListener('click', () => {
       this._settingsOpen = !this._settingsOpen;
@@ -2680,7 +2714,7 @@ class ClimSolaireCard extends HTMLElement {
   _applySettingsOpen() {
     const open = this._settingsOpen || this._config.show_settings === 'expanded';
     this._el.settingsBody.classList.toggle('open', open);
-    this._el.settingsChev.setAttribute('icon', open ? 'mdi:chevron-up' : 'mdi:chevron-down');
+    this._el.settingsToggle.classList.toggle('expanded', open);
     this._el.settingsToggle.style.display =
       this._config.show_settings === 'expanded' ? 'none' : '';
   }
@@ -2705,11 +2739,23 @@ class ClimSolaireCard extends HTMLElement {
     this._el.heroTitle.textContent = st.state && st.state !== 'unknown' ? st.state : mode.title;
     this._el.heroReason.textContent = a.reason || '—';
 
+    this._renderHeroSwitch();
     this._renderBudget(a);
     this._renderPath(a);
     this._renderUnits(a);
     this._renderPills(a);
     this._renderSettings(a);
+  }
+
+  _renderHeroSwitch() {
+    const c = this._config.controls.enabled;
+    const st = c && this._hass.states[c.entity];
+    const show = this._config.hero_switch !== false && !!st;
+    this._el.heroSwitchWrap.style.display = show ? '' : 'none';
+    this._el.hero.classList.toggle('with-switch', show);
+    if (!show) return;
+    this._el.heroSwitch.checked = st.state === 'on';
+    this._el.heroSwitch.disabled = this._readOnly();
   }
 
   _cutGroups(a) {
@@ -2855,19 +2901,27 @@ class ClimSolaireCard extends HTMLElement {
   }
 
   // --- Chemin de décision : 6 priorités du flow ---
+  // Même échelle que la carte cumulus : règle décisive en gras, valeurs à droite
+  _ladderHtml(steps) {
+    return `
+      <div class="ladder">
+        <div class="ladder-title">Chemin de décision</div>
+        ${steps.map((s) => `
+          <div class="ladder-row st-${s.status}">
+            <ha-icon icon="${s.status === 'fired' ? 'mdi:arrow-right-bold-circle'
+                          : s.status === 'pass' ? 'mdi:check' : 'mdi:minus'}"></ha-icon>
+            <span class="ladder-label">${esc(s.label)}</span>
+            <span class="ladder-note">${esc(s.detail || '')}</span>
+          </div>`).join('')}
+      </div>`;
+  }
+
   _renderPath(a) {
     if (Array.isArray(a.decision_path) && a.decision_path.length) {
-      this._el.path.innerHTML = a.decision_path.map((s) => {
-        const state = s.status === 'hit' ? 'stop' : s.status === 'pass' ? 'pass' : 'skip';
-        return `
-        <div class="step ${state}">
-          <ha-icon icon="${state === 'pass' ? 'mdi:check' : state === 'stop' ? 'mdi:arrow-right-bold' : 'mdi:minus'}"></ha-icon>
-          <div>
-            <div class="step-l">${esc(s.label)}</div>
-            <div class="step-d">${esc(s.detail || '')}</div>
-          </div>
-        </div>`;
-      }).join('');
+      this._el.path.innerHTML = this._ladderHtml(a.decision_path.map((s) => ({
+        label: s.label, detail: s.detail,
+        status: s.status === 'hit' ? 'fired' : s.status === 'pass' ? 'pass' : 'skip',
+      })));
       return;
     }
     const steps = [];
@@ -2901,14 +2955,9 @@ class ClimSolaireCard extends HTMLElement {
         ? `arrêt de ${a.shed_blocked_by || '?'} en attente du min-run`
         : `${a.active_count || 0} unité(s) en marche`);
 
-    this._el.path.innerHTML = steps.map((s) => `
-      <div class="step ${s.state}">
-        <ha-icon icon="${s.state === 'pass' ? 'mdi:check' : s.state === 'stop' ? 'mdi:arrow-right-bold' : 'mdi:minus'}"></ha-icon>
-        <div>
-          <div class="step-l">${esc(s.label)}</div>
-          <div class="step-d">${esc(s.detail)}</div>
-        </div>
-      </div>`).join('');
+    this._el.path.innerHTML = this._ladderHtml(steps.map((s) => ({
+      label: s.label, detail: s.detail, status: s.state === 'stop' ? 'fired' : s.state,
+    })));
   }
 
   // --- Pièces, par ordre de priorité ---
@@ -3060,50 +3109,50 @@ class ClimSolaireCard extends HTMLElement {
   _renderPills(a) {
     const pills = [];
     const pill = (icon, label, value, color) => pills.push(
-      `<div class="pill"${color ? ` style="--pill:${color}"` : ''}>
+      `<div class="chip" style="--chip-color:${color || 'var(--clc-text-2)'}">
         <ha-icon icon="${icon}"></ha-icon>
-        <div><span class="p-v">${esc(value)}</span><span class="p-l">${esc(label)}</span></div>
+        <div class="chip-text"><div class="v">${esc(value)}</div><div class="l">${esc(label)}</div></div>
       </div>`);
 
-    pill('mdi:solar-power', 'production', fmtW(a.solar_power), '#fb8c00');
+    pill('mdi:solar-power-variant', 'Production', fmtW(a.solar_power), '#ffb300');
     if (a.router_action !== undefined) {
       pill('mdi:flash', a.clim_power_total_w > (a.recoverable_w || 0) + 50
-        ? `clim, dont ${fmtW(a.clim_power_total_w - (a.recoverable_w || 0))} à la main` : 'clim',
+        ? `Clim, dont ${fmtW(a.clim_power_total_w - (a.recoverable_w || 0))} à la main` : 'Clim',
         fmtW(a.clim_power_total_w), '#1e88e5');
       if (a.clim_kwh_today != null) {
         pill('mdi:counter', a.clim_solar_share_today != null
-          ? `aujourd'hui · ${a.clim_solar_share_today} % solaire` : 'aujourd\'hui',
+          ? `Aujourd'hui · ${a.clim_solar_share_today} % solaire` : 'Aujourd\'hui',
           `${a.clim_kwh_today}${nbsp}kWh`, '#757575');
       }
-      if (a.outdoor_temp != null) pill('mdi:thermometer', `extérieur (${a.outdoor_source || '?'})`, fmtT(a.outdoor_temp), '#757575');
+      if (a.outdoor_temp != null) pill('mdi:thermometer', `Extérieur (${a.outdoor_source || '?'})`, fmtT(a.outdoor_temp), '#757575');
       if (a.forecast_today_max != null) {
-        pill('mdi:weather-partly-cloudy', 'prévision du jour',
+        pill('mdi:weather-partly-cloudy', 'Prévision du jour',
           `${Math.round(a.forecast_today_min)}–${Math.round(a.forecast_today_max)}${nbsp}°C`, '#757575');
       }
       this._el.pills.innerHTML = pills.join('');
       return;
     }
-    pill('mdi:transmission-tower', 'surplus potentiel', fmtW(a.potential_surplus), '#43a047');
+    pill('mdi:transmission-tower', 'Surplus potentiel', fmtW(a.potential_surplus), '#43a047');
     if ((a.cumulus_reserve_w || 0) > 0) {
-      pill('mdi:water-boiler', 'réservé eau chaude', fmtW(a.cumulus_reserve_w), '#26a69a');
+      pill('mdi:water-boiler', 'Réservé eau chaude', fmtW(a.cumulus_reserve_w), '#26a69a');
     }
     if (a.clim_power_total_measured != null) {
       // Total mesuré aux disjoncteurs : il inclut les unités lancées à la main,
       // contrairement au récupérable affiché dans la barre.
       const extra = Math.round(a.clim_power_total_measured - (a.clim_draw_recoverable || 0));
-      const label = extra > 50 ? `mesuré, dont ${fmtW(extra)} hors flow` : 'conso mesurée';
+      const label = extra > 50 ? `Mesuré, dont ${fmtW(extra)} hors flow` : 'Conso mesurée';
       pill('mdi:flash', label, fmtW(a.clim_power_total_measured), '#1e88e5');
     }
     if (a.observed_draw_per_unit_w != null) {
       const off = a.clim_load_w && Math.abs(a.observed_draw_per_unit_w - a.clim_load_w) > a.clim_load_w * 0.25;
-      pill('mdi:tune-variant', off ? `à calibrer (réglé ${fmtW(a.clim_load_w)})` : 'par unité',
+      pill('mdi:tune-variant', off ? `À calibrer (réglé ${fmtW(a.clim_load_w)})` : 'Par unité',
         fmtW(a.observed_draw_per_unit_w), off ? '#fb8c00' : '#757575');
     }
     if (a.clim_kwh_today != null) {
-      pill('mdi:counter', 'aujourd\'hui', `${a.clim_kwh_today}${nbsp}kWh`, '#757575');
+      pill('mdi:counter', 'Aujourd\'hui', `${a.clim_kwh_today}${nbsp}kWh`, '#757575');
     }
     if (a.outdoor_temp != null) {
-      pill('mdi:thermometer', 'extérieur', fmtT(a.outdoor_temp), '#757575');
+      pill('mdi:thermometer', 'Extérieur', fmtT(a.outdoor_temp), '#757575');
     }
     this._el.pills.innerHTML = pills.join('');
   }
@@ -3147,44 +3196,44 @@ class ClimSolaireCard extends HTMLElement {
       const st = hass.states[c.entity];
       if (!st) {
         if (c.optional) continue;
-        html += `<div class="row missing">${esc(c.label)} : <code>${esc(c.entity)}</code> introuvable</div>`;
+        html += `<div class="setting-row missing">${esc(c.label)} : <code>${esc(c.entity)}</code> introuvable</div>`;
         continue;
       }
-      const icon = c.icon ? `<ha-icon icon="${c.icon}"></ha-icon>` : '';
-      const desc = c.desc ? `<div class="row-desc">${esc(c.desc)}</div>` : '';
+      const label = `<div class="setting-label">${c.icon ? `<ha-icon icon="${c.icon}"></ha-icon>` : ''}<span>${esc(c.label)}</span></div>`;
+      const desc = c.desc ? `<div class="setting-desc">${esc(c.desc)}</div>` : '';
 
       if (c.type === 'toggle') {
         html += `
-          <div class="row" data-row="${key}">
-            <div class="row-head">
-              <span class="row-label">${esc(c.label)}</span>
-              <label class="sw">
-                <input type="checkbox" data-ctl="${key}"${dis}>
-                <span class="sw-track"></span>
-              </label>
-            </div>
+          <div class="setting-row toggle-row" data-row="${key}">
+            ${label}
+            <label class="switch">
+              <input type="checkbox" data-ctl="${key}"${dis}>
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
           </div>`;
       } else if (c.type === 'select') {
         const opts = (st.attributes.options || [])
           .map((o) => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
         html += `
-          <div class="row" data-row="${key}">
-            <div class="row-head">
-              <span class="row-label">${icon}${esc(c.label)}</span>
+          <div class="setting-row" data-row="${key}">
+            <div class="setting-header">
+              ${label}
               <select class="sel" data-ctl="${key}"${dis}>${opts}</select>
             </div>
             ${desc}
           </div>`;
       } else {
         html += `
-          <div class="row" data-row="${key}">
-            <div class="row-head">
-              <span class="row-label">${icon}${esc(c.label)}</span>
-              <span class="row-value"><span data-rv="${key}">—</span>
-                <span class="row-sub" data-sub="${key}"></span></span>
+          <div class="setting-row" data-row="${key}">
+            <div class="setting-header">
+              ${label}
+              <div class="setting-value">
+                <span class="setting-value-main" data-rv="${key}">—</span>
+                <span class="setting-value-sub" data-sub="${key}"></span>
+              </div>
             </div>
-            <input type="range" data-ctl="${key}"${dis}>
             ${desc}
+            <input type="range" class="slider" data-ctl="${key}"${dis}>
           </div>`;
       }
     }
@@ -3217,13 +3266,14 @@ class ClimSolaireCard extends HTMLElement {
         if (!held) el._sent = null;
         if (!el._dragging && !held && !isNaN(val)) {
           el.value = val;
+          this._updateSliderFill(el);
           this._showSliderValue(el, c, st);
         }
         const sub = body.querySelector(`[data-sub="${el.dataset.ctl}"]`);
         if (sub) {
           const v = c.subtitleAttr ? autoAttrs[c.subtitleAttr] : null;
           sub.textContent = v != null
-            ? `${c.subtitleLabel} ${v}${c.subtitleUnit || ''}` : '';
+            ? `${c.subtitleLabel} ${v}${c.subtitleUnit ? nbsp + c.subtitleUnit : ''}` : '';
         }
       }
     });
@@ -3235,7 +3285,14 @@ class ClimSolaireCard extends HTMLElement {
     const step = Number(el.step) || 1;
     const digits = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
     const unit = (st && st.attributes.unit_of_measurement) || '';
-    rv.textContent = `${Number(el.value).toFixed(digits)}${unit}`;
+    rv.textContent = `${Number(el.value).toFixed(digits)}${unit ? nbsp + unit : ''}`;
+  }
+
+  _updateSliderFill(el) {
+    const min = Number(el.min) || 0;
+    const max = Number(el.max) || 100;
+    const pct = max > min ? ((Number(el.value) - min) / (max - min)) * 100 : 0;
+    el.style.setProperty('--fill-pct', `${pct}%`);
   }
 
   // ---------- Verrou ----------
@@ -3321,7 +3378,7 @@ class ClimSolaireCard extends HTMLElement {
           if (on || key !== 'enabled') { this._setToggle(c.entity, on); return; }
           // Couper l'automatisation laisse les unités sans pilote : confirmation
           el.checked = true;
-          this._confirm(el.closest('.row'),
+          this._confirm(el.closest('.setting-row'),
             'Couper l\'automatisation ? Les unités ne seront plus pilotées.', 'Couper',
             () => this._setToggle(c.entity, false));
         });
@@ -3341,6 +3398,7 @@ class ClimSolaireCard extends HTMLElement {
         el.addEventListener('pointercancel', stopDrag);
         el.addEventListener('input', () => {
           this._armRelock();
+          this._updateSliderFill(el);
           this._showSliderValue(el, c, this._hass.states[c.entity]);
         });
         el.addEventListener('change', () => {
@@ -3379,7 +3437,7 @@ class ClimSolaireCard extends HTMLElement {
       const b = e.target.closest('[data-c]');
       if (!b) return;
       this._cancelConfirm();
-      if (b.dataset.c === 'yes' && !this._locked()) onOk();
+      if (b.dataset.c === 'yes' && !this._readOnly()) onOk();
     });
     anchor.appendChild(bar);
     this._confirmBar = bar;
@@ -3423,10 +3481,17 @@ class ClimSolaireCard extends HTMLElement {
       }
       @keyframes clc-shimmer { 0% { left: -40%; } 100% { left: 100%; } }
 
+      /* Composants partagés avec la carte cumulus (mêmes valeurs) :
+         en-tête, titres de section, bouton info, chemin de décision,
+         tuiles, réglages, curseur, interrupteur, verrou, confirmation. */
       .hero {
         display: grid; grid-template-columns: 56px 1fr; gap: 14px; align-items: center;
         padding: 14px 18px 8px 18px; cursor: pointer;
       }
+      .hero.with-switch { grid-template-columns: 56px 1fr auto; }
+      .hero-switch input:disabled ~ .switch-track { opacity: 0.5; cursor: not-allowed; }
+      .hero-confirm { padding: 0 18px; }
+      .hero-confirm .confirm { margin: 4px 0 6px 0; }
       .hero-icon {
         width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
         background: color-mix(in srgb, var(--clc-accent) 16%, transparent);
@@ -3443,20 +3508,26 @@ class ClimSolaireCard extends HTMLElement {
       .hero-title { font-size: 1.05rem; font-weight: 600; color: var(--clc-text); line-height: 1.25; }
       .hero-reason {
         font-size: 0.82rem; color: var(--clc-text-2); line-height: 1.35; margin-top: 2px;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
       }
 
       /* Budget */
       .budget { padding: 6px 18px 10px 18px; }
-      .budget-head {
+      .budget-head, .units-head {
         display: flex; align-items: center; justify-content: space-between;
-        font-size: 0.78rem; color: var(--clc-text-2); margin-bottom: 6px;
-        text-transform: uppercase; letter-spacing: 0.04em;
+        font-size: 0.72rem; color: var(--clc-text-2); margin-bottom: 6px;
+        text-transform: uppercase; letter-spacing: 0.06em;
       }
       .info-btn {
-        background: none; border: none; padding: 0; cursor: pointer;
-        color: var(--clc-text-2); display: grid; place-items: center;
+        all: unset; width: 24px; height: 24px; display: grid; place-items: center;
+        border-radius: 50%; cursor: pointer; color: var(--clc-text-2); flex-shrink: 0;
+        transition: background 0.2s ease, color 0.2s ease;
       }
-      .info-btn ha-icon { --mdc-icon-size: 18px; }
+      .info-btn ha-icon { --mdc-icon-size: 16px; }
+      .info-btn:hover {
+        background: color-mix(in srgb, var(--clc-text-2) 14%, transparent); color: var(--clc-text);
+      }
+      .info-btn.on { color: var(--clc-accent); }
 
       .bar {
         position: relative; display: flex; height: 22px; border-radius: 11px;
@@ -3492,28 +3563,32 @@ class ClimSolaireCard extends HTMLElement {
       .leg.warn ha-icon { --mdc-icon-size: 16px; }
 
       /* Chemin de décision */
-      .path { display: none; margin-top: 10px; }
-      .path.open { display: block; }
-      .step {
-        display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: start;
-        padding: 4px 0; font-size: 0.78rem;
+      .path {
+        display: none; margin-top: 10px; padding: 8px 10px; border-radius: 10px;
+        background: color-mix(in srgb, var(--clc-text-2) 6%, transparent);
       }
-      .step ha-icon { --mdc-icon-size: 16px; margin-top: 1px; }
-      .step-l { color: var(--clc-text); font-weight: 500; }
-      .step-d { color: var(--clc-text-2); }
-      .step.pass ha-icon { color: #43a047; }
-      .step.stop ha-icon { color: var(--clc-accent); }
-      .step.stop .step-l { font-weight: 700; }
-      .step.skip { opacity: 0.42; }
+      .path.open { display: block; }
+      .ladder { display: flex; flex-direction: column; gap: 2px; }
+      .ladder-title {
+        font-size: 0.62rem; color: var(--clc-text-2); text-transform: uppercase;
+        letter-spacing: 0.05em; margin-bottom: 4px;
+      }
+      .ladder-row {
+        display: grid; grid-template-columns: 18px auto 1fr; gap: 8px; align-items: center;
+        font-size: 0.74rem; color: var(--clc-text-2); padding: 2px 0;
+      }
+      .ladder-row ha-icon { --mdc-icon-size: 14px; }
+      .ladder-row.st-pass ha-icon { color: #43a047; }
+      .ladder-row.st-fired { color: var(--clc-text); font-weight: 600; }
+      .ladder-row.st-fired ha-icon { color: var(--clc-accent); }
+      .ladder-row.st-skip { opacity: 0.45; }
+      .ladder-row.warn .ladder-note { color: #e53935; }
+      .ladder-note {
+        text-align: right; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere;
+      }
 
       /* Pièces */
       .units { padding: 4px 18px 8px 18px; }
-      .units-head {
-        display: flex; align-items: center; justify-content: space-between;
-        font-size: 0.78rem; color: var(--clc-text-2); text-transform: uppercase;
-        letter-spacing: 0.04em; margin-bottom: 4px;
-      }
-      .info-btn.on { color: var(--clc-accent); }
       .reorder-hint {
         font-size: 0.72rem; color: var(--clc-text-2); line-height: 1.35;
         padding: 2px 0 6px 0;
@@ -3554,63 +3629,98 @@ class ClimSolaireCard extends HTMLElement {
       .unit.manual .u-badge { background: color-mix(in srgb, #8e24aa 20%, transparent); color: #6a1b9a; }
       .unit.err .u-badge { background: color-mix(in srgb, #e53935 20%, transparent); color: #c62828; }
 
-      /* Pastilles */
-      .pills {
-        display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 18px 12px 18px;
+      /* Tuiles */
+      .chips {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px; padding: 6px 18px 12px 18px;
       }
-      .pill {
-        display: flex; align-items: center; gap: 7px; flex: 1 1 130px;
-        padding: 7px 10px; border-radius: 10px; background: var(--clc-divider);
+      .chip {
+        display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center;
+        padding: 8px 12px; border-radius: 12px;
+        background: linear-gradient(135deg,
+          color-mix(in srgb, var(--chip-color) 18%, transparent),
+          color-mix(in srgb, var(--chip-color) 6%, transparent));
       }
-      .pill ha-icon { --mdc-icon-size: 19px; color: var(--pill, var(--clc-text-2)); }
-      .pill div { display: flex; flex-direction: column; min-width: 0; }
-      .p-v { font-size: 0.85rem; font-weight: 600; color: var(--clc-text); white-space: nowrap; }
-      .p-l { font-size: 0.68rem; color: var(--clc-text-2); }
+      @supports not (background: color-mix(in srgb, red, blue)) {
+        .chip { background: var(--clc-divider); }
+      }
+      .chip ha-icon { --mdc-icon-size: 20px; color: var(--chip-color); }
+      .chip-text { min-width: 0; }
+      .chip .v {
+        font-size: 0.95rem; font-weight: 700; color: var(--clc-text);
+        font-variant-numeric: tabular-nums; line-height: 1.1; white-space: nowrap;
+      }
+      .chip .l {
+        font-size: 0.68rem; color: var(--clc-text-2); text-transform: uppercase;
+        letter-spacing: 0.05em; margin-top: 1px;
+      }
 
       /* Réglages */
       .settings { border-top: 1px solid var(--clc-divider); }
       .settings-toggle {
-        width: 100%; display: flex; align-items: center; gap: 8px;
-        padding: 10px 18px; background: none; border: none; cursor: pointer;
-        color: var(--clc-text-2); font-size: 0.84rem; font-family: inherit;
+        all: unset; box-sizing: border-box; width: 100%;
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 18px; cursor: pointer; user-select: none; transition: background 0.2s;
       }
-      .settings-toggle ha-icon { --mdc-icon-size: 18px; }
-      .settings-toggle .chev { margin-left: auto; }
-      .settings-body { display: none; padding: 0 18px 14px 18px; }
+      .settings-toggle:hover { background: color-mix(in srgb, var(--clc-text-2) 6%, transparent); }
+      .settings-toggle-label {
+        display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 500;
+        color: var(--clc-text-2); text-transform: uppercase; letter-spacing: 0.05em;
+      }
+      .settings-toggle-label ha-icon { --mdc-icon-size: 18px; }
+      .chevron { --mdc-icon-size: 22px; color: var(--clc-text-2); transition: transform 0.3s ease; }
+      .settings-toggle.expanded .chevron { transform: rotate(180deg); }
+      .settings-body { display: none; padding: 4px 18px 16px 18px; }
       .settings-body.open { display: block; }
-      .row { padding: 8px 0; border-top: 1px solid var(--clc-divider); }
-      .row:first-child { border-top: none; }
-      .row.missing { color: #e53935; font-size: 0.78rem; }
-      .row-head {
-        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      .setting-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; }
+      .setting-row + .setting-row { border-top: 1px solid var(--clc-divider); }
+      .setting-row.missing { display: block; color: #e53935; font-size: 0.78rem; }
+      .toggle-row { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+      .setting-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+      .setting-label {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 0.9rem; color: var(--clc-text); font-weight: 500;
       }
-      .row-label {
-        display: flex; align-items: center; gap: 6px;
-        font-size: 0.86rem; color: var(--clc-text);
+      .setting-label ha-icon { --mdc-icon-size: 18px; color: var(--clc-text-2); }
+      .setting-value { display: flex; align-items: baseline; gap: 8px; font-variant-numeric: tabular-nums; }
+      .setting-value-main { font-size: 0.95rem; font-weight: 700; color: var(--clc-accent); white-space: nowrap; }
+      .setting-value-sub { font-size: 0.75rem; color: var(--clc-text-2); white-space: nowrap; }
+      .setting-value-sub:empty { display: none; }
+      .setting-desc { font-size: 0.72rem; color: var(--clc-text-2); line-height: 1.3; margin-top: -2px; }
+      .slider {
+        -webkit-appearance: none; appearance: none; width: 100%; height: 6px; margin: 4px 0;
+        border-radius: 3px; background: var(--clc-divider);
+        background-image: linear-gradient(var(--clc-accent), var(--clc-accent));
+        background-size: var(--fill-pct, 0%) 100%; background-repeat: no-repeat;
+        outline: none; cursor: pointer;
       }
-      .row-label ha-icon { --mdc-icon-size: 17px; color: var(--clc-text-2); }
-      .row-value { font-size: 0.86rem; font-weight: 600; color: var(--clc-text); }
-      .row-sub { font-size: 0.7rem; font-weight: 400; color: var(--clc-text-2); }
-      .row-desc { font-size: 0.72rem; color: var(--clc-text-2); margin-top: 4px; line-height: 1.35; }
-      input[type=range] {
-        width: 100%; margin-top: 8px; accent-color: var(--clc-accent);
+      .slider::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%;
+        background: var(--clc-accent); cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+      .slider::-webkit-slider-thumb:hover { transform: scale(1.15); box-shadow: 0 3px 10px rgba(0,0,0,0.35); }
+      .slider::-webkit-slider-thumb:active { transform: scale(1.25); }
+      .slider::-moz-range-thumb {
+        width: 18px; height: 18px; border-radius: 50%; background: var(--clc-accent);
+        cursor: pointer; border: none; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
       }
       .sel {
         font-family: inherit; font-size: 0.82rem; padding: 3px 6px; border-radius: 6px;
         border: 1px solid var(--clc-divider); background: transparent; color: var(--clc-text);
       }
-      .sw { position: relative; display: inline-block; width: 38px; height: 20px; }
-      .sw input { opacity: 0; width: 0; height: 0; }
-      .sw-track {
-        position: absolute; inset: 0; border-radius: 10px; cursor: pointer;
-        background: var(--clc-divider); transition: background 0.25s ease;
+      .switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .switch-track {
+        position: absolute; inset: 0; background: var(--clc-divider); border-radius: 12px;
+        cursor: pointer; transition: background 0.25s ease;
       }
-      .sw-track::before {
-        content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px;
-        border-radius: 50%; background: #fff; transition: transform 0.25s ease;
+      .switch-thumb {
+        position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white;
+        border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.35); transition: transform 0.25s ease;
       }
-      .sw input:checked + .sw-track { background: var(--clc-accent); }
-      .sw input:checked + .sw-track::before { transform: translateX(18px); }
+      .switch input:checked ~ .switch-track { background: var(--clc-accent); }
+      .switch input:checked ~ .switch-track .switch-thumb { transform: translateX(20px); }
 
       /* Verrou */
       .lock-row {
@@ -3626,12 +3736,12 @@ class ClimSolaireCard extends HTMLElement {
         border: 1px solid var(--clc-divider); background: transparent;
       }
       .lock-row:not(.open) .lock-btn { border-color: var(--clc-accent); color: var(--clc-accent); }
-      .settings-body.locked .row:not(.missing) { opacity: 0.55; }
+      .settings-body.locked .setting-row:not(.missing) { opacity: 0.55; }
 
       /* Confirmation */
       .confirm {
-        display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px;
-        margin-top: 8px; padding: 8px 10px; border-radius: 10px;
+        flex-basis: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px;
+        padding: 8px 10px; border-radius: 10px;
         background: color-mix(in srgb, #e53935 12%, transparent);
         font-size: 0.78rem; color: var(--clc-text);
       }
@@ -3643,7 +3753,7 @@ class ClimSolaireCard extends HTMLElement {
       }
       .confirm-btn.ok { background: #e53935; border-color: #e53935; color: #fff; }
       .settings-body.locked input, .settings-body.locked select,
-      .settings-body.locked .sw-track { cursor: not-allowed; }
+      .settings-body.locked .switch-track { cursor: not-allowed; }
 
       @media (max-width: 460px) {
         .unit { grid-template-columns: 16px 1fr auto 20px; }
@@ -3727,6 +3837,7 @@ class ClimSolaireCardEditor extends HTMLElement {
         },
       },
       { name: 'show_units', selector: { boolean: {} } },
+      { name: 'hero_switch', selector: { boolean: {} } },
       { name: 'lock', selector: { boolean: {} } },
       {
         name: 'lock_timeout',
@@ -3752,6 +3863,7 @@ class ClimSolaireCardEditor extends HTMLElement {
       entity: 'Entité (sensor du flow)',
       show_settings: 'Panneau réglages',
       show_units: 'Liste des pièces',
+      hero_switch: 'Interrupteur d\'automatisation dans l\'en-tête',
       lock: 'Verrou des commandes',
       lock_timeout: 'Reverrouillage après inactivité',
       admin_only: 'Lecture seule pour les non-administrateurs',
@@ -3764,6 +3876,7 @@ class ClimSolaireCardEditor extends HTMLElement {
 
   _helper(sc) {
     if (sc.name === 'entity') return 'sensor.clim_automation ou équivalent';
+    if (sc.name === 'hero_switch') return 'Confirmation demandée à chaque bascule';
     if (sc.name === 'lock') return 'Bouton « Déverrouiller » requis avant réglage ou réordonnancement';
     if (sc.name === 'admin_only') return 'Garde-fou d\'interface, les droits réels restent ceux de Home Assistant';
     if (sc.name && sc.name.startsWith('ctrl_')) {
@@ -3778,6 +3891,7 @@ class ClimSolaireCardEditor extends HTMLElement {
       entity: cfg.entity || '',
       show_settings: cfg.show_settings === false ? 'hidden' : (cfg.show_settings || 'collapsible'),
       show_units: cfg.show_units !== false,
+      hero_switch: cfg.hero_switch !== false,
       lock: cfg.lock !== false,
       lock_timeout: cfg.lock_timeout != null ? Number(cfg.lock_timeout) : 30,
       admin_only: cfg.admin_only === true,
@@ -3803,6 +3917,8 @@ class ClimSolaireCardEditor extends HTMLElement {
     else cfg.show_settings = data.show_settings;
     if (data.show_units === false) cfg.show_units = false;
     else delete cfg.show_units;
+    if (data.hero_switch === false) cfg.hero_switch = false;
+    else delete cfg.hero_switch;
     if (data.lock === false) cfg.lock = false;
     else delete cfg.lock;
     const timeout = Number(data.lock_timeout);

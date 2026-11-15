@@ -67,6 +67,22 @@ Modifications notables de ce dépôt, listées ci-dessous.
   mise à jour ; dates relatives (« demain », jour de la semaine) dans la bande
   stratégie, au lieu d'un « demain » écrit pour toute échéance hors du jour.
 
+### Cartes — même interface pour la clim et l'eau chaude
+
+- **Carte clim** alignée sur la carte cumulus : interrupteur d'automatisation
+  dans l'en-tête avec confirmation (`hero_switch`, aussi dans l'éditeur),
+  chemin de décision en échelle (règle décisive en gras, valeurs à droite,
+  dans un encadré), tuiles teintées par mesure, bouton « Réglages », lignes de
+  réglage (icône, valeur en couleur d'accent, description avant le curseur),
+  curseur rempli et interrupteur identiques, icône sur la ligne Automatisation.
+- **Carte cumulus** : raison de l'en-tête sur deux lignes au lieu d'une
+  tronquée, pastilles du plan sur une ligne compacte (deux colonnes sur
+  téléphone) au lieu de trois blocs pleine largeur, valeurs du chemin de
+  décision renvoyées à la ligne plutôt que tronquées.
+- **Formats communs** : « 1 600 W », « +1 350 W », « 20.0 °C », espace
+  insécable avant l'unité ; titres de section, bouton info et marges
+  identiques dans les deux cartes.
+
 ## [v2.0.0] - 2026-10-14
 
 Refonte des deux automatisations pour un contrat Base à export non rémunéré :
