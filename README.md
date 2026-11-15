@@ -59,7 +59,8 @@ Solcast de 30 min restants avant elle, en prenant d'abord ceux au plus fort
 | Besoin | Cible | Échéance | Particularité |
 |---|---|---|---|
 | **Minimum garanti** | `min_temp` + 2 °C | moment où le refroidissement appris atteindrait `min_temp` | prévision pessimiste (p10) ; réseau accepté si aucun créneau ne suffit |
-| **Anti-légionelle** | 61 °C | 10e jour sans 60 °C (cycle dû dès le 7e) | va chercher le meilleur soleil d'ici l'échéance ; échue, chauffe immédiate |
+| **Anticipation de la nuit** | `min_temp` + `FLOOR_MARGIN` au retour du bon soleil demain | coucher du soleil | soleil levé seulement : si l'eau doit passer sous le filet pendant la nuit, le manque est pris sur le bon soleil restant (surplus ≥ 50 % du tirage), jamais au réseau |
+| **Anti-légionelle** | 61 °C | coucher du soleil du 10e jour sans 60 °C (cycle dû dès le 7e) | **créneaux de jour seulement**, au meilleur soleil d'ici l'échéance ; échue, chauffe immédiate |
 | **Cible de confort** | `target_temp` | fin de la prévision (demain soir) | **au soleil seulement** : créneaux d'au moins 15 % de part solaire |
 | **Stockage gratuit** | — | — | surplus ≥ 90 % du tirage, sans plafond logiciel (le thermostat coupe) |
 
@@ -124,6 +125,7 @@ légionelle et le stockage gratuit restent actifs.
 | `FLOOR_MARGIN` (°C visés au-dessus de `min_temp` par le minimum garanti) | `2` |
 | `SOLAR_SENSOR` / `GRID_SENSOR` / `HOUSE_SENSOR` | `sensor.pince_amperemetrique_power_a` / `_b` / `_ab` |
 | `CLIM_SENSOR` | `sensor.clim_automation` (absent : 0 W récupérable) |
+| `SUN_ENTITY` | `sun.sun` (absent : jour = production Solcast non nulle, coucher supposé à 19 h) |
 
 Helpers : `input_boolean.cumulus_automation_enabled`,
 `input_number.cumulus_target_temp`, `input_number.cumulus_min_temp`,
@@ -462,7 +464,7 @@ se recalcule seul à chaque tick.
 
 | Harnais | Modèle | Couverture |
 |---|---|---|
-| `tests/cumulus-flow-sim.js` | ballon (chauffe, refroidissement, thermostat), production en cloche, consommation de fond | 18 scénarios : attente du pic, chauffe à part solaire partielle, minimum de nuit, report au lendemain, anti-légionelle due et échue, pause manuelle, solaire amont, thermostat ouvert, sonde HS, Solcast absent, priorité sur la clim, apprentissage, biais Solcast, payload, anti court-cycle, erreur de commande |
+| `tests/cumulus-flow-sim.js` | ballon (chauffe, refroidissement, thermostat), production en cloche, consommation de fond | 25 scénarios : attente du pic, chauffe à part solaire partielle, minimum de nuit, report au lendemain, anti-légionelle due et échue, pause manuelle, solaire amont, thermostat ouvert, sonde HS, Solcast absent, priorité sur la clim, apprentissage, biais Solcast, payload, anti court-cycle, erreur de commande, sonde à 1 °C / 60 min, puisage du soir, redémarrage HA, anticipation de la nuit, anti-légionelle de jour |
 | `tests/clim-flow-sim.js` | unités inverter (puissance selon l'écart pièce/consigne), pièces qui dérivent, compteurs de groupe | 18 scénarios : suivi du surplus, approfondir avant de démarrer, nuage, cumulus prioritaire, tolérance d'import, reprise en main par la consigne, disjoncteur, mode absent, ordre du helper, saison sur prévision, puissance apprise, récupérable, min-run, payload, prévision météo, erreur de commande, bilan d'une heure |
 | `tests/coupled-flows-sim.js` | les deux pipelines sur un même compteur, journée complète | priorité eau chaude → confort → stockage, part solaire, nombre de commandes du relais |
 
@@ -666,6 +668,8 @@ Palette cohérente pour toutes les couleurs d'état :
 | 🛑 Légionelle bloquée | Rouge `#e53935` | `legionella_blocked = true` (thermostat mécanique coupant avant 60 °C) |
 | 🦠 Anti-légionelle | Rouge `#e53935` | règle `legionella_overdue` ou `plan_legionella` |
 | 🛡️ Minimum garanti | Orange `#fb8c00` | règle `plan_floor` |
+| 🌇 Anticipation de la nuit | Vert `#43a047` | règle `plan_floor_ahead` |
+| ⏳ Sonde en attente | Orange `#fb8c00` | règle `sensor_grace` (sonde absente depuis moins de 5 min, état maintenu) |
 | 💧 Chauffe solaire | Vert `#43a047` | règle `plan_comfort` |
 | ⚡ Stockage gratuit | Vert foncé `#2e7d32` | règle `plan_storage` |
 | ⚠️ Légionelle due | Orange `#fb8c00` | attente, cycle dû |

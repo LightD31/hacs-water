@@ -50,6 +50,8 @@ const MODES = {
   'forcing':             { color: '#fb8c00', icon: 'mdi:flash',                     title: 'Forçage dans la fenêtre',   active: true  },
   'heating':             { color: '#43a047', icon: 'mdi:water-boiler',              title: 'Chauffe au solaire',        active: true  },
   'floor':               { color: '#fb8c00', icon: 'mdi:shield-alert-outline',      title: 'Minimum garanti',           active: true  },
+  'floor-ahead':         { color: '#43a047', icon: 'mdi:weather-sunset-down',       title: 'Anticipation de la nuit',   active: true  },
+  'sensor-grace':        { color: '#fb8c00', icon: 'mdi:thermometer-alert',         title: 'Sonde en attente, état maintenu', active: false },
   'storage':             { color: '#2e7d32', icon: 'mdi:transmission-tower-export', title: 'Stockage gratuit',          active: true  },
   'waiting':             { color: '#1e88e5', icon: 'mdi:weather-sunny-alert',       title: 'Attente du soleil',         active: false },
   'solar-upstream':      { color: '#26a69a', icon: 'mdi:solar-power-variant',       title: 'Eau fournie par le solaire amont', active: false },
@@ -62,7 +64,7 @@ const DEFAULT_CONTROLS = {
   target:          { entity: 'input_number.cumulus_target_temp',         label: 'Cible',              type: 'slider', icon: 'mdi:thermometer-check',
                      desc: "Atteinte au soleil seulement, sur les meilleurs créneaux d'ici demain soir" },
   min:             { entity: 'input_number.cumulus_min_temp',            label: 'Minimum',            type: 'slider', icon: 'mdi:thermometer-low',
-                     desc: "Garanti : chauffe au meilleur créneau avant d'y descendre, sur le réseau s'il le faut" },
+                     desc: "Garanti : anticipé au bon soleil de la veille si la nuit doit y faire descendre, sinon au meilleur créneau avant d'y arriver, sur le réseau s'il le faut" },
   efficiency:      { entity: 'input_number.cumulus_efficiency',          label: 'Rendement',          type: 'slider', icon: 'mdi:percent-circle',
                      subtitleAttr: 'efficiency_learned', subtitleLabel: 'appris', subtitleUnit: '',
                      desc: "Valeur de départ, remplacée par le rendement appris après trois chauffes" },
@@ -689,6 +691,13 @@ class CumulusSolaireCard extends HTMLElement {
       const d = new Date(iso);
       return `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
     };
+    // « 17h27 », « demain 10h00 », « mer. 17h27 »
+    const when = (iso) => {
+      const d = new Date(iso), t = new Date();
+      const days = Math.round((new Date(d.toDateString()) - new Date(t.toDateString())) / 86400000);
+      const day = days === 0 ? '' : days === 1 ? 'demain ' : d.toLocaleDateString('fr-FR', { weekday: 'short' }) + ' ';
+      return day + hhmm(iso);
+    };
     const plans = Array.isArray(a.plans) ? a.plans : [];
     const lead = plans.find(p => p.id === a.lead_plan) || null;
     let icon = 'mdi:chart-timeline-variant', accent = null, why;
@@ -698,6 +707,9 @@ class CumulusSolaireCard extends HTMLElement {
     } else if (a.legionella_blocked) {
       icon = 'mdi:alert-octagon-outline'; accent = '#e53935';
       why = 'Anti-légionelle bloquée : le thermostat mécanique coupe avant 60 °C';
+    } else if (a.rule === 'sensor_grace') {
+      icon = 'mdi:thermometer-alert'; accent = '#fb8c00';
+      why = 'Sonde momentanément indisponible (redémarrage HA ou Zigbee2MQTT ?) : état maintenu 5 min';
     } else if (a.degraded_sonde) {
       icon = 'mdi:thermometer-off'; accent = '#e53935';
       why = 'Sonde HS : seul le surplus quasi gratuit chauffe l\'eau';
@@ -711,17 +723,29 @@ class CumulusSolaireCard extends HTMLElement {
       icon = 'mdi:check-circle-outline'; accent = '#43a047';
       why = 'Aucun besoin : seul le surplus quasi gratuit est stocké';
     } else {
-      const label = { floor: 'Minimum garanti', legionella: 'Anti-légionelle', comfort: 'Cible' }[lead.id] || lead.label;
-      if (lead.threshold_w <= 0) {
+      const label = { floor: 'Minimum garanti', floor_ahead: 'Anticipation de la nuit', legionella: 'Anti-légionelle', comfort: 'Cible' }[lead.id] || lead.label;
+      if (lead.id === 'floor_ahead') {
+        icon = 'mdi:weather-sunset-down'; accent = '#43a047';
+        why = `${label} : sans appoint, l'eau passerait sous ${Math.round(a.stop_temp)} °C avant le bon soleil`
+          + (a.sun_return ? ` (${when(a.sun_return)})` : '')
+          + ` ; appoint au soleil restant` + (a.sunset ? ` d'ici ${hhmm(a.sunset)}` : '');
+      } else if (lead.id === 'legionella' && a.sun_up === false && a.desired !== 'on') {
+        icon = 'mdi:weather-night'; accent = '#fb8c00';
+        why = `${label} : de jour seulement, reprise au lever du soleil`
+          + (a.legionella_deadline ? ` (échéance ${when(a.legionella_deadline)}, coucher du soleil)` : '');
+      } else if (lead.id === 'legionella' && lead.threshold_w <= 0) {
+        icon = 'mdi:flash'; accent = '#fb8c00';
+        why = `${label} : soleil insuffisant d'ici l'échéance, complément de jour`
+          + (a.legionella_deadline ? ` avant ${when(a.legionella_deadline)}` : '');
+      } else if (lead.threshold_w <= 0) {
         icon = 'mdi:flash'; accent = '#fb8c00';
         why = `${label} : plus de meilleur créneau avant l'échéance`;
       } else {
         icon = lead.id === 'comfort' ? 'mdi:weather-sunny' : 'mdi:calendar-clock';
         accent = lead.id === 'comfort' ? '#43a047' : '#fb8c00';
         const dl = lead.deadline ? new Date(lead.deadline) : null;
-        const sameDay = dl && dl.toDateString() === new Date().toDateString();
-        why = `${label} : ${lead.slot_count} créneau(x) au meilleur soleil d'ici `
-          + (dl ? `${sameDay ? '' : 'demain '}${hhmm(lead.deadline)}` : 'demain soir');
+        why = `${label} : ${lead.slot_count} créneau(x)${lead.id === 'legionella' ? ' de jour' : ''} au meilleur soleil d'ici `
+          + (dl ? when(lead.deadline) : 'demain soir');
       }
     }
 
@@ -751,8 +775,8 @@ class CumulusSolaireCard extends HTMLElement {
     for (const p of plans) {
       if (p.id === 'storage') continue;
       rows.push([`Plan ${p.label.toLowerCase()}`,
-        `${p.threshold_w > 0 ? Math.round(p.threshold_w) + ' W' : 'immédiat'} · ${Number(p.need_kwh || 0).toFixed(1)} kWh`
-        + (p.deadline ? ` · avant ${new Date(p.deadline).toDateString() === new Date().toDateString() ? '' : 'demain '}${hhmm(p.deadline)}` : '')]);
+        `${p.threshold_w > 0 ? Math.round(p.threshold_w) + ' W' : (p.daylight_only ? 'de jour' : 'immédiat')} · ${Number(p.need_kwh || 0).toFixed(1)} kWh`
+        + (p.deadline ? ` · avant ${when(p.deadline)}` : '')]);
     }
     if (a.base_load_w != null) rows.push(['Consommation de fond', `${Math.round(a.base_load_w)} W`]);
     if (a.solcast_bias_today != null) rows.push(['Biais Solcast', `×${Number(a.solcast_bias_today).toFixed(2)} aujourd'hui · ×${Number(a.solcast_bias_long).toFixed(2)} demain`]);
@@ -760,7 +784,9 @@ class CumulusSolaireCard extends HTMLElement {
     if (a.efficiency != null) rows.push(['Rendement', `${Math.round(a.efficiency * 100)} % (${a.efficiency_source || '?'})`]);
     if (a.heat_kwh_today != null) rows.push(['Chauffe du jour', `${Number(a.heat_kwh_today).toFixed(1)} kWh`
       + (a.solar_share_today != null ? ` · ${a.solar_share_today} % solaire` : '')]);
-    if (a.legionella_deadline && a.legionella_due) rows.push(['Échéance légionelle', new Date(a.legionella_deadline).toLocaleString('fr-FR', { weekday: 'short', hour: '2-digit', minute: '2-digit' })]);
+    if (a.legionella_deadline && a.legionella_due) rows.push(['Échéance légionelle', `${when(a.legionella_deadline)} (coucher du soleil, chauffe de jour)`]);
+    if (a.sun_return) rows.push(['Soleil', (a.sun_up && a.sunset ? `couchant ${hhmm(a.sunset)}` : 'couché')
+      + ` · bon soleil ${when(a.sun_return)}`]);
     if (a.manual_hold_until) rows.push(['Reprise auto', hhmm(a.manual_hold_until)]);
     return { icon, why, accent, pills, rows };
   }
@@ -846,9 +872,11 @@ class CumulusSolaireCard extends HTMLElement {
         case 'legionella_overdue': return 'legionella-critical';
         case 'plan_legionella': return 'legionella-critical';
         case 'plan_floor': return 'floor';
+        case 'plan_floor_ahead': return 'floor-ahead';
         case 'plan_comfort': return 'heating';
         case 'plan_storage': return 'storage';
         case 'sensor': return a.desired === 'on' ? 'storage' : 'sensor-error';
+        case 'sensor_grace': return 'sensor-grace';
         case 'idle': return a.solar_covers_target === true ? 'solar-upstream' : 'target-reached';
         case 'wait':
           if (a.solcast_stale === true) return 'solcast-stale';
