@@ -10,6 +10,7 @@ const ENV = [
     ['WATER_TEMP_SENSOR', 'sensor.temp_chauffe_eau_electrique_temperature', 'str'],
     ['SOLAR_TANK_SENSOR', 'sensor.temp_chauffe_eau_solaire_temperature', 'str'],
     ['SOLAR_SUFFICIENT_MARGIN', '3', 'num'],
+    ['FLOOR_MARGIN', '2', 'num'],
     ['SOLAR_SENSOR', 'sensor.pince_amperemetrique_power_a', 'str'],
     ['GRID_SENSOR', 'sensor.pince_amperemetrique_power_b', 'str'],
     ['HOUSE_SENSOR', 'sensor.pince_amperemetrique_power_ab', 'str'],

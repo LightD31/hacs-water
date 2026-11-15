@@ -2,6 +2,27 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
+## [Unreleased]
+
+### Flow cumulus — minimum garanti près de la limite basse
+
+- **Échéance ancrée sur l'heure de la mesure** : la sonde Zigbee ne publie
+  qu'au changement de 1 °C ou toutes les ~60 min. L'échéance du minimum
+  reculait d'une minute par minute tant que la valeur restait figée, puis
+  revenait d'un coup à chaque mesure : chauffes de 5 à 15 min aux :00 / :30
+  la nuit. La température courante est estimée depuis la dernière mesure
+  (au plus 0,9 °C sous la valeur publiée).
+- **Puisage en cours détecté** : pente des 90 dernières minutes sans chauffe ;
+  le minimum suit la plus raide entre elle et le refroidissement appris (un
+  puisage du soir à 1,4 °C/h n'est plus planifié avec 0,3 °C/h).
+- **Chauffe à seuil nul maintenue** (minimum, anti-légionelle) jusqu'à la
+  cible : plus d'arrêt à chaque nouvelle mesure.
+- **`FLOOR_MARGIN`** (onglet Env, 2 °C par défaut) : marge visée au-dessus de
+  `min_temp` par le minimum garanti.
+- Sensor : attributs `draw_rate_c_per_h`, `water_temp_est`, `water_temp_at`.
+- Simulation : sonde à 1 °C / 60 min (une seule chauffe la nuit) et puisage
+  du soir sans soleil (minimum tenu).
+
 ## [v2.0.0] - 2026-10-14
 
 Refonte des deux automatisations pour un contrat Base à export non rémunéré :

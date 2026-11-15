@@ -56,6 +56,8 @@ msg.switchId = ID.switch;
 // --- Constantes de l'installation ---
 msg.loadW = clamp(eNum('CUMULUS_LOAD_W', 1200), 100, 10000);
 msg.solarMargin = clamp(eNum('SOLAR_SUFFICIENT_MARGIN', 3), 0, 20);
+// Marge du minimum garanti : °C visés au-dessus de min_temp quand le filet chauffe
+msg.floorMargin = clamp(eNum('FLOOR_MARGIN', 2), 0, 15);
 
 // --- Réglages utilisateur (helpers HA) ---
 msg.enabled = g['input_boolean.cumulus_automation_enabled']?.state === 'on';
@@ -69,6 +71,12 @@ msg.kwhPerDeg = msg.tankL * 4.186 / 3600;   // kWh thermiques par °C
 const rawTemp = g[ID.temp]?.state;
 msg.tempAvailable = usable(rawTemp);
 msg.temp = msg.tempAvailable ? parseFloat(rawTemp) : null;
+// Horodatage de la mesure : la sonde Zigbee ne publie qu'au changement de 1 °C
+// ou toutes les ~60 min. Sans lui, une valeur figée passe pour une mesure
+// fraîche et l'échéance du minimum recule avec l'horloge.
+const tsRaw = g[ID.temp]?.last_reported || g[ID.temp]?.last_changed || g[ID.temp]?.last_updated;
+const ts = tsRaw ? new Date(tsRaw).getTime() : NaN;
+msg.tempAt = msg.tempAvailable && !isNaN(ts) && ts <= now ? ts : now;
 if (msg.tempAvailable) {
     setF('sondeDownSince', null);
     msg.sondeDownHours = 0;

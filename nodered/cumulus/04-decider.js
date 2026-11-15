@@ -87,8 +87,13 @@ const surplusFor = (p) => (p.basis === 'own' ? msg.surplusAvgOwn : msg.surplusAv
 const thresholdUsed = (p) => (on
     ? Math.min(p.threshold, p.thresholdOn != null ? p.thresholdOn : p.threshold) - HYST_W
     : p.threshold);
+// Chauffe à seuil nul engagée (minimum, légionelle) : maintenue jusqu'à ce
+// que le plan disparaisse (cible atteinte). Sans ce verrou, chaque nouvelle
+// mesure sortait le créneau courant du plan et la chauffe repartait au créneau
+// suivant : impulsions de 5 à 15 min aux :00 / :30 la nuit.
+const latched = getF('zeroPlanLatch');
 const satisfied = (p) => {
-    if (p.threshold <= 0) return p.nowPicked === true;
+    if (p.threshold <= 0) return p.nowPicked === true || (on && latched === p.id);
     return surplusFor(p) >= thresholdUsed(p);
 };
 
@@ -177,6 +182,11 @@ if (msg.enabled && !msg.manualHoldActive && msg.switchAvailable && msg.desired !
         msg.desired = msg.switchState;
     }
 }
+
+// Verrou posé par une chauffe à seuil nul, levé dès qu'elle n'est plus en tête
+const zp = msg.desired === 'on' && /^plan_(floor|legionella)$/.test(msg.rule)
+    && (msg.plans.find(p => 'plan_' + p.id === msg.rule) || {}).threshold <= 0;
+setF('zeroPlanLatch', zp ? msg.rule.slice(5) : null);
 
 msg.decisionPath = path;
 return msg;
