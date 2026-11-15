@@ -325,13 +325,18 @@ Notifications : plus aucune température de pièce (≥ 2 h), unité injoignable
 ## Carte clim
 
 `clim-solaire-card.js`, pensée pour `sensor.clim_automation` comme la carte
-cumulus l'est pour son propre sensor.
+cumulus l'est pour son propre sensor. Les deux cartes partagent les mêmes
+composants : en-tête avec interrupteur d'automatisation, chemin de décision,
+tuiles, panneau de réglages, curseurs et verrou ; seule la partie centrale
+(budget et pièces ici, cadran et courbe solaire pour le cumulus) diffère.
 
 - **Hero** : état et raison, icône et couleur selon le routeur — désactivée →
   ralenti (eau chaude prioritaire, ou surplus en baisse) → rafraîchissement /
   chauffage / confort gratuit → disjoncteur coupé → pilotage manuel → sondes
   muettes → démarrage en confirmation → hors saison → confort assuré → veille.
-  Pulsation de l'icône pendant un cycle actif.
+  Pulsation de l'icône pendant un cycle actif. **Interrupteur
+  d'automatisation** à droite, confirmation demandée à chaque bascule
+  (`hero_switch: false` pour le masquer).
 - **Budget de surplus** : barre empilée **eau chaude / clim / export**, cerclée
   de rouge en cas d'import ; légende avec l'**écart** que la boucle corrige et
   son action en cours (consigne approfondie, relâchée, démarrage…), la
@@ -344,7 +349,7 @@ cumulus l'est pour son propre sensor.
   flèches par pièce. L'ordre est écrit dans `input_text.clim_priority_order` et
   **repris immédiatement par le flow**. Le premier servi est le dernier relâché.
   Le bouton n'apparaît que si le helper existe.
-- **Pastilles** : production, consommation des unités (part pilotée à la main
+- **Tuiles** : production, consommation des unités (part pilotée à la main
   signalée), kWh du jour et leur part solaire, température extérieure et sa
   source, prévision du jour.
 - **Chemin de décision** (bouton ℹ de la bande budget), publié par le flow.
@@ -364,6 +369,7 @@ entity: sensor.clim_automation
 |---|---|---|---|
 | `entity` | string | **requis** | Sensor produit par le flow clim |
 | `show_units` | bool | `true` | Liste des pièces |
+| `hero_switch` | bool | `true` | Interrupteur d'automatisation dans l'en-tête, avec confirmation à chaque bascule |
 | `show_settings` | string/bool | `'collapsible'` | `'collapsible'` · `'expanded'` · `false` |
 | `lock` | bool | `true` | Réglages et réordonnancement verrouillés (voir [Verrou des commandes](#verrou-des-commandes)) |
 | `lock_timeout` | number | `30` | Secondes d'inactivité avant reverrouillage |
