@@ -543,5 +543,27 @@ scenario('25. Anti-légionelle engagée au coucher du soleil, échéance demain 
     check('reprise au lever', ctx.w.switch === 'on', last.state);
 });
 
+scenario('26. Minimum puis anti-légionelle, sans soleil : passage de relais sans coupure', () => {
+    // Le verrou ne tient que le plan qui a démarré : à 48 °C le minimum
+    // s'arrêtait, l'eau refroidissait, le minimum repartait la nuit et le cycle
+    // se faisait le lendemain (4 démarrages). La chauffe en cours garde
+    // désormais son créneau pour le besoin suivant.
+    NOW = at(0, '09:00');
+    const lastHigh = at(1, '12:00') - 10 * 86400000;   // due, échéance demain au coucher
+    const ctx = makeWorld({ temp: 46.3, minT: 46, decay: 0.2, eff: 0.6, effTrue: 0.6,
+        peakToday: 0, peakTomorrow: 0, report: { step: 1, maxMin: 60 },
+        context: { lastHighTempAt: lastHigh, decayRate: 0.2 } });
+    let night = 0;
+    runUntil(ctx, at(1, '19:00'), () => {
+        const h = new RealDate(NOW).getHours() + new RealDate(NOW).getMinutes() / 60;
+        if (ctx.w.switch === 'on' && (h >= 18.5 || h < 8.5)) night++;
+    });
+    const ons = ctx.commands.filter(c => c.action === 'turn_on');
+    const log = ctx.commands.map(c => hh(c.t) + ' ' + c.action.slice(5)).join(', ');
+    check('60 °C atteints', ctx.stats.maxTemp >= 60, ctx.stats.maxTemp.toFixed(1));
+    check('un seul démarrage', ons.length === 1, log);
+    check('aucune chauffe la nuit', night === 0, night + ' min');
+});
+
 console.log('\n' + pass + ' assertion(s) OK, ' + fail + ' en échec');
 process.exit(fail ? 1 : 0);

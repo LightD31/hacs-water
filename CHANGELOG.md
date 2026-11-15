@@ -40,10 +40,18 @@ Modifications notables de ce dépôt, listées ci-dessous.
   immédiate, de nuit comprise.
 - Jour et nuit lus sur l'intégration Sun (`SUN_ENTITY`, défaut `sun.sun`),
   repli sur la production Solcast. Attributs `sun_up`, `sunset`, `sun_return`.
+- **Passage de relais entre besoins** : chauffe engagée, le créneau en cours
+  passe devant à surplus égal. Le verrou de la version précédente ne tient
+  que le plan qui a démarré : à 48 °C le minimum s'arrêtait, l'eau
+  refroidissait, le minimum repartait la nuit et l'anti-légionelle se faisait
+  le lendemain. Les besoins s'enchaînent désormais sans coupure (scénario 26 :
+  1 démarrage au lieu de 4, aucune chauffe la nuit, même énergie à état final
+  égal). Sur trois semaines simulées (sonde 1 °C / 60 min, puisages, soleil
+  variable), aucune différence par ailleurs.
 - **Grâce de 5 min sur la sonde** au redémarrage de HA ou de Zigbee2MQTT : état
   maintenu (règle `sensor_grace`) au lieu de basculer en « sonde HS » et de
   couper une chauffe en cours.
-- Simulation : intégration Sun simulée, scénarios 21 à 25 (tous en échec sur
+- Simulation : intégration Sun simulée, scénarios 21 à 26 (tous en échec sur
   la version précédente).
 
 ### Carte cumulus

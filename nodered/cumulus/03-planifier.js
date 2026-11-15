@@ -102,6 +102,7 @@ const isDaylight = (s) => {
     return m >= riseMin && m < setMin;
 };
 const curSlot = slots.find(s => s.t <= now && now < s.t + SLOT_MS) || null;
+const isCurrentSlot = (s) => s.t <= now && now < s.t + SLOT_MS;
 const sunUpNow = msg.sunAvailable ? msg.sunUp === true : !!(curSlot && curSlot.pv > 0);
 // Fin du jour en cours, puis premier créneau de bon soleil après la nuit
 let k = 0;
@@ -168,8 +169,14 @@ function plan(goal, deadline, o) {
                 exp: pessimistic ? s.exp10 : s.exp };
         })
         .filter(s => s.h > 0 && s.exp >= minExp)
-        // À surplus égal, le plus tard : moins de pertes avant usage
-        .sort((a, b) => b.exp - a.exp || b.t - a.t);
+        // À surplus égal, le plus tard : moins de pertes avant usage. Chauffe
+        // engagée : le créneau en cours passe devant. Un besoin à seuil nul
+        // prend alors le relais de la chauffe en cours (minimum puis
+        // anti-légionelle) au lieu de couper et de redémarrer plus tard ; le
+        // verrou du nœud Décider ne tient, lui, que le plan qui a démarré.
+        .sort((a, b) => b.exp - a.exp
+            || (msg.switchState === 'on' ? isCurrentSlot(b) - isCurrentSlot(a) : 0)
+            || b.t - a.t);
     if (cands.length === 0 && minExp) return null;
 
     // Deux passes : le besoin dépend du moment de la chauffe (refroidissement).
