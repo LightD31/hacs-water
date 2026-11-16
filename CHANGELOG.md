@@ -2,7 +2,7 @@
 
 Modifications notables de ce dépôt, listées ci-dessous.
 
-## [Unreleased]
+## [v2.1.0] - 2026-11-16
 
 ### Flow cumulus — minimum garanti près de la limite basse
 
